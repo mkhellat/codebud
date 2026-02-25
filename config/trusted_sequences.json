@@ -1,0 +1,9 @@
+[
+    {
+      "name": "install_python_package",
+      "sequence": [
+        "python3 -m pip install"
+      ]
+    }
+  ]
+  
