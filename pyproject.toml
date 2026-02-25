@@ -1,0 +1,11 @@
+[project]
+name = "codebud"
+version = "1.0.0"
+description = "A Cursor-style local coding agent with OpenClaw integration."
+authors = [
+    { name = "Behzad" }
+]
+
+[build-system]
+requires = ["setuptools"]
+build-backend = "setuptools.build_meta"

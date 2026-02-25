@@ -1,0 +1,8 @@
+# Core dependencies
+openai
+requests
+
+# Optional but recommended
+tiktoken
+
+# No heavy dependencies required for the stub embedding + search
