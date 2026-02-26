@@ -403,15 +403,35 @@ cd ~/coding-agent
 
 33. **Confirm the agent can call your LLM**
 
-    Once you have implemented `call_llm` in `agent/llm_stub.py` to talk to
-    Ollama (or another LLM), try:
+    The planner uses a small helper located in `agent/llm_stub.py`.
+    That module chooses a backend based on environment variables:
+
+    * `OLLAMA_MODEL` – if set and the `ollama` CLI is installed, the
+      prompt is forwarded to the local Ollama model.
+    * `OPENAI_API_KEY` – if present, the OpenAI Python client is used
+      (model name controlled by `OPENAI_MODEL`, default `gpt-3.5-turbo`).
+
+    You can export one of the variables before running; for example
+
+    ```bash
+    export OLLAMA_MODEL=qwen2.5-coder-7b-q4_k_m
+    # or
+    export OPENAI_API_KEY="sk-..."
+    export OPENAI_MODEL=gpt-4o-mini
+    ```
+
+    Then execute the CLI test:
 
     ```bash
     python run_agent.py "Write a Python function to add two numbers."
     ```
 
-    If the agent returns a plan that includes a call to the LLM, the
-    full loop is working.
+    A successful plan (even if it simply dumps a JSON plan with a
+    placeholder step) means the end‑to‑end loop is working.
+
+    If no backend is configured you will see a warning message and the
+    planner will return a `plan_error` result; set the appropriate
+    environment variable and rerun.
 
 ### Phase 4 — OpenClaw integration (steps 36–45)
 
