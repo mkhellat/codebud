@@ -716,7 +716,19 @@ You will see a JSON object printed to the terminal with:
 
 - `status`: `"ok"` or `"plan_error"`.
 - If `"ok"`, a `plan` with steps.
+#### Interactive approval mode
 
+To mimic the step‑by‑step UX of the Claude CLI, `run_agent.py` accepts an
+`--interactive` (or `-i`) flag. When enabled, the agent presents each step
+in turn and prompts you to execute it. For example:
+
+```bash
+python run_agent.py -i "Create a Python file that prints hello"
+```
+
+The CLI will display each plan step, ask `Execute? [y/N]`, run approved
+steps, and show their outputs. This provides a simple text‑based
+conversation that doesn't require the OpenClaw UI.
 ### Option B — Through OpenClaw
 
 Once you have completed **Phase 4** above:
