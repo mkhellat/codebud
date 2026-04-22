@@ -23,47 +23,46 @@ operations are performed unless a real model is requested.
 """
 
 import os
-import subprocess
 import logging
-from typing import Optional
 
+import requests
 
-# Configure logger for this module
 logger = logging.getLogger(__name__)
 
+# Ollama default base URL; override with OLLAMA_BASE_URL if needed.
+_OLLAMA_BASE = os.environ.get("OLLAMA_BASE_URL", "http://localhost:11434")
 
-def call_llm(prompt: str, timeout: float = 30.0) -> str:
+
+def call_llm(prompt: str, timeout: float = 120.0) -> str:
     """Send ``prompt`` to the configured LLM and return the raw text output.
 
     Priority order:
 
-    1. Ollama CLI if ``OLLAMA_MODEL`` is set and the binary is available.
+    1. Ollama REST API if ``OLLAMA_MODEL`` is set and the server is reachable.
     2. OpenAI API if ``OPENAI_API_KEY`` is present.
     3. Otherwise return an empty string and log a warning.
 
-    ``timeout`` controls how long we wait for the process / network call.
+    ``timeout`` applies to the HTTP request.  120 s gives CPU inference
+    (7-B models) time to finish without hanging indefinitely.
     """
 
-    # try Ollama first
     ollama_model = os.environ.get("OLLAMA_MODEL")
     if ollama_model and _ollama_available():
         return _call_ollama(ollama_model, prompt, timeout)
 
-    # fall back to OpenAI
     if os.environ.get("OPENAI_API_KEY"):
         try:
-            import openai
+            from openai import OpenAI
 
+            client = OpenAI()
             model = os.environ.get("OPENAI_MODEL", "gpt-3.5-turbo")
-            resp = openai.ChatCompletion.create(
+            resp = client.chat.completions.create(
                 model=model,
                 messages=[{"role": "user", "content": prompt}],
                 temperature=0.0,
             )
-            # ChatCompletion returns a list; grab the first
-            text = resp.choices[0].message.content
-            return text
-        except Exception as exc:  # pragma: no cover - best-effort
+            return resp.choices[0].message.content or ""
+        except Exception as exc:  # pragma: no cover
             logger.warning("OpenAI call failed: %s", exc)
             return ""
 
@@ -77,29 +76,27 @@ def call_llm(prompt: str, timeout: float = 30.0) -> str:
 
 
 def _ollama_available() -> bool:
-    """Return True if the ``ollama`` executable is on PATH."""
-    from shutil import which
-
-    return which("ollama") is not None
+    """Return True if the Ollama server answers a lightweight health check."""
+    try:
+        r = requests.get(f"{_OLLAMA_BASE}/api/tags", timeout=2)
+        return r.status_code == 200
+    except Exception:
+        return False
 
 
 def _call_ollama(model: str, prompt: str, timeout: float) -> str:
-    """Run ``ollama generate <model>`` with the given prompt.
+    """POST to the Ollama generate endpoint and return the concatenated text.
 
-    We capture stdout and return it.  If the subprocess fails we log a
-    warning and return an empty string.
+    Ollama streams one JSON object per line; we join all ``response`` fields.
     """
     try:
-        proc = subprocess.run(
-            ["ollama", "generate", model, "--prompt", prompt],
-            capture_output=True,
-            text=True,
+        r = requests.post(
+            f"{_OLLAMA_BASE}/api/generate",
+            json={"model": model, "prompt": prompt, "stream": False},
             timeout=timeout,
         )
-        if proc.returncode != 0:
-            logger.warning("ollama exited %d: %s", proc.returncode, proc.stderr)
-            return ""
-        return proc.stdout
-    except Exception as exc:  # pragma: no cover - best-effort
-        logger.warning("ollama call failed: %s", exc)
+        r.raise_for_status()
+        return r.json().get("response", "")
+    except Exception as exc:
+        logger.warning("Ollama call failed: %s", exc)
         return ""
