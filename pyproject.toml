@@ -5,7 +5,28 @@ description = "A Cursor-style local coding agent with OpenClaw integration."
 authors = [
     { name = "Behzad" }
 ]
+requires-python = ">=3.10"
+dependencies = [
+    "openai",
+    "requests",
+    "tiktoken",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest",
+    "ruff",
+]
+
+[project.scripts]
+codebud = "run_agent:main"
+
+[tool.setuptools.packages.find]
+include = ["agent*", "openclaw*"]
 
 [build-system]
 requires = ["setuptools"]
 build-backend = "setuptools.build_meta"
+
+[tool.ruff]
+line-length = 100
