@@ -1,0 +1,9 @@
+@node Configuration
+@chapter Configuration
+@cindex configuration
+
+@strong{This chapter is a stub and will be expanded in a future session.}
+
+This chapter will document all environment variables (@env{OLLAMA_MODEL},
+@env{OPENAI_API_KEY}, @env{OLLAMA_BASE_URL}) and the JSON config files in
+@file{config/}.

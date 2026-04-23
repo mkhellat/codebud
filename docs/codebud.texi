@@ -1,0 +1,70 @@
+\input texinfo   @c -*-texinfo-*-
+@c %**start of header
+@setfilename codebud.info
+@settitle Codebud Manual
+@documentencoding UTF-8
+@c %**end of header
+
+@include version.texi
+
+@copying
+This manual documents Codebud @value{VERSION}, a local Cursor-style coding
+agent powered by Ollama and Qwen2.5-Coder.
+
+Copyright @copyright{} 2026 Mohammadreza Khellat.
+
+Permission is granted to copy, distribute and/or modify this document under
+the terms of the GNU Free Documentation License, Version 1.3 or any later
+version published by the Free Software Foundation; with no Invariant
+Sections, no Front-Cover Texts, and no Back-Cover Texts.  A copy of the
+license is available at @url{https://www.gnu.org/licenses/fdl.html}.
+@end copying
+
+@titlepage
+@title Codebud Manual
+@subtitle A Local Cursor-Style Coding Agent
+@subtitle Version @value{VERSION}, @value{UPDATED}
+@author Mohammadreza Khellat
+@page
+@vskip 0pt plus 1filll
+@insertcopying
+@end titlepage
+
+@contents
+
+@ifnottex
+@node Top
+@top Codebud
+
+@insertcopying
+
+This manual is divided into the following chapters:
+
+@menu
+* Introduction::            What Codebud is and who it is for.
+* Installation::            Setting up the environment.
+* Model Management::        Downloading, selecting, and transferring LLM models.
+* Usage::                   Running the agent from the command line and OpenClaw.
+* Configuration::           Environment variables and config files.
+* Architecture::            How the components fit together.
+* Tools Reference::         Every built-in tool documented.
+* Safety and Sandbox::      How Codebud limits what the LLM can do.
+* Development::             Adding tools, running tests, iterating on prompts.
+* Troubleshooting::         Common failures and how to fix them.
+* Glossary::                Key terms defined.
+@end menu
+@end ifnottex
+
+@include chapters/introduction.texi
+@include chapters/installation.texi
+@include chapters/model-management.texi
+@include chapters/usage.texi
+@include chapters/configuration.texi
+@include chapters/architecture.texi
+@include chapters/tools-reference.texi
+@include chapters/safety-and-sandbox.texi
+@include chapters/development.texi
+@include chapters/troubleshooting.texi
+@include chapters/glossary.texi
+
+@bye

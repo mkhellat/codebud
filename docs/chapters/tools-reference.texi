@@ -1,0 +1,9 @@
+@node Tools Reference
+@chapter Tools Reference
+@cindex tools reference
+
+@strong{This chapter is a stub and will be expanded in a future session.}
+
+This chapter will document every built-in tool: @code{file_read},
+@code{file_write}, @code{patch}, @code{command}, @code{web_search},
+@code{embed}, @code{search_embeddings}.

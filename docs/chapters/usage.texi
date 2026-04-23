@@ -1,0 +1,8 @@
+@node Usage
+@chapter Usage
+@cindex usage
+
+@strong{This chapter is a stub and will be expanded in a future session.}
+
+This chapter will cover running @command{run_agent.py}, the interactive
+approval mode (@option{-i}), and the OpenClaw skill interface.

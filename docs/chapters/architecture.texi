@@ -1,0 +1,8 @@
+@node Architecture
+@chapter Architecture
+@cindex architecture
+
+@strong{This chapter is a stub and will be expanded in a future session.}
+
+This chapter will describe the AgentCore orchestration loop: planner
+@arrow{} safety check @arrow{} executor @arrow{} memory timeline.

@@ -1,0 +1,8 @@
+@node Installation
+@chapter Installation
+@cindex installation
+
+@strong{This chapter is a stub and will be expanded in a future session.}
+
+This chapter will cover system prerequisites, Python virtual environment
+setup, installing dependencies, and running the editable install.

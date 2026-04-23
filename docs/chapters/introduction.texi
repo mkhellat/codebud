@@ -1,0 +1,10 @@
+@node Introduction
+@chapter Introduction
+@cindex introduction
+
+@strong{This chapter is a stub and will be expanded in a future session.}
+
+Codebud is a local, CPU-friendly coding agent that uses Ollama and
+Qwen2.5-Coder to plan and execute software tasks on your machine.  It is
+designed for developers who want a Cursor-style AI assistant without sending
+code to an external service.

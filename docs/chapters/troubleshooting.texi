@@ -1,0 +1,8 @@
+@node Troubleshooting
+@chapter Troubleshooting
+@cindex troubleshooting
+
+@strong{This chapter is a stub and will be expanded in a future session.}
+
+This chapter will cover common failures: model timeouts, JSON parse errors,
+safety rejections, sandbox permission errors, and OpenAI fallback issues.

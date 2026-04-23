@@ -1,0 +1,10 @@
+@node Safety and Sandbox
+@chapter Safety and Sandbox
+@cindex safety
+@cindex sandbox
+
+@strong{This chapter is a stub and will be expanded in a future session.}
+
+This chapter will explain the SafetyEngine, the three JSON policy files
+(@file{config/harmless_commands.json}, @file{config/powerful_commands.json},
+@file{config/trusted_sequences.json}), and how the Sandbox enforces them.

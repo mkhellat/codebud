@@ -1,0 +1,472 @@
+@node Model Management
+@chapter Model Management
+@cindex model management
+@cindex Ollama
+@cindex LLM models
+
+This chapter explains everything you need to know about managing the language
+models that power Codebud: what they are, how to download them, where they
+live on disk, how to switch between them, and how to move them to another
+machine without re-downloading.
+
+@menu
+* What is Ollama::              The local LLM server Codebud talks to.
+* System Requirements::         RAM, CPU, and disk you will need.
+* Choosing a Model::            Which Qwen2.5-Coder variant to use.
+* Installing Ollama::           Getting the server running.
+* Pulling a Model::             Downloading a model for the first time.
+* Listing Models::              Seeing what you have installed.
+* Where Models Are Stored::     The on-disk layout.
+* Custom Storage Location::     Keeping models on a portable drive.
+* Selecting a Model in Codebud::  The OLLAMA_MODEL environment variable.
+* Switching Models::            Changing models without restarting.
+* Transferring Models::         Moving models to another machine.
+* Removing Models::             Freeing disk space.
+* Model Troubleshooting::       What to do when things go wrong.
+* Quick Recipes::               The five commands you will use most.
+@end menu
+
+
+@node What is Ollama
+@section What is Ollama
+@cindex Ollama, overview
+
+Ollama is a lightweight server that runs large language models (LLMs) locally
+on your computer.  Codebud does not call any external API; instead it sends
+every prompt to Ollama over a plain HTTP connection on
+@code{localhost:11434}.  Your code and your prompts never leave your machine.
+
+Ollama stores model weights in a central directory, serves them through a
+small REST API, and handles loading/unloading models from RAM automatically.
+You install it once, pull whichever models you want, and point Codebud at
+them with a single environment variable.
+
+
+@node System Requirements
+@section System Requirements
+@cindex system requirements, models
+@cindex RAM requirements
+
+The minimum resources depend on the model you choose.  The table below lists
+the practical requirements for the models Codebud recommends.
+
+@multitable @columnfractions .35 .15 .20 .30
+@headitem Model name @tab Disk @tab RAM needed @tab CPU speed (i7-8550U)
+@item @code{qwen2.5-coder:1.5b} @tab ~1 GB @tab ~2 GB @tab ~12 t/s
+@item @code{qwen2.5-coder:3b-instruct-q4_K_M} @tab ~1.8 GB @tab ~4 GB @tab ~5 t/s
+@item @code{qwen2.5-coder:7b-instruct-q4_K_M} @tab ~4.7 GB @tab ~8 GB @tab ~1 t/s
+@item @code{qwen2.5-coder:14b-instruct-q4_K_M} @tab ~9 GB @tab ~16 GB @tab <1 t/s
+@end multitable
+
+@noindent
+@emph{t/s} = tokens per second.  Speeds are approximate for a 2018 laptop
+CPU running without a GPU.  If you have an NVIDIA GPU, Ollama uses it
+automatically and speeds improve by 10--50x.
+
+@strong{Recommendation for this machine (i7-8550U, 16 GB RAM):} use
+@code{qwen2.5-coder:3b-instruct-q4_K_M}.  It fits comfortably in RAM,
+responds in a few seconds per call, and produces JSON plans reliably.
+
+
+@node Choosing a Model
+@section Choosing a Model
+@cindex choosing a model
+@cindex Qwen2.5-Coder
+
+All recommended models are from the Qwen2.5-Coder family, which is
+specifically trained on source code and follows structured JSON instructions
+reliably --- important for Codebud's planner.
+
+@table @strong
+@item 1.5B (smallest)
+Fast enough for interactive use even on slow hardware.  May struggle with
+multi-step plans or complex file edits.  Good for quick experiments.
+
+@item 3B (recommended for CPU laptops)
+The best balance of speed and capability on hardware without a dedicated GPU.
+Handles Codebud's planning prompt well and usually returns valid JSON on the
+first try.
+
+@item 7B (recommended if you have a GPU or a fast desktop CPU)
+Noticeably better plan quality and code generation.  Too slow for interactive
+use on a 2018 laptop CPU (1--2 tokens/s means 2--5 minutes per prompt).
+
+@item 14B and larger
+Requires substantial RAM (16 GB+) and a GPU for practical use.  Not covered
+in this manual.
+@end table
+
+@noindent
+If you are unsure, start with @code{3b-instruct-q4_K_M}.  You can always
+pull a larger model later and switch with one environment variable change
+(@pxref{Selecting a Model in Codebud}).
+
+
+@node Installing Ollama
+@section Installing Ollama
+@cindex installing Ollama
+@cindex ollama serve
+
+@subsection Arch Linux
+
+Ollama is not in the official Arch repositories.  Use the official installer
+script:
+
+@example
+curl -fsSL https://ollama.com/install.sh | sh
+@end example
+
+This installs the @command{ollama} binary to @file{/usr/local/bin/ollama} and
+optionally installs a systemd service unit.
+
+@subsection Starting the server
+
+You must have the Ollama server running before you can pull or use any model.
+There are two ways to keep it running:
+
+@table @strong
+@item Foreground (for testing)
+@example
+ollama serve
+@end example
+Leave this terminal open.  Press @kbd{Ctrl-C} to stop.
+
+@item systemd service (recommended for daily use)
+@example
+sudo systemctl enable --now ollama
+@end example
+The service starts automatically on boot.  Check its status with:
+@example
+systemctl status ollama
+@end example
+@end table
+
+@subsection Verify the server is running
+
+@example
+curl http://localhost:11434/api/tags
+@end example
+
+You should receive a JSON response.  If you get @samp{Connection refused},
+the server is not running --- start it with one of the methods above.
+
+
+@node Pulling a Model
+@section Pulling a Model
+@cindex pulling a model
+@cindex ollama pull
+
+Download a model with:
+
+@example
+ollama pull qwen2.5-coder:3b-instruct-q4_K_M
+@end example
+
+Ollama downloads the model weights in parallel chunks and displays a progress
+bar.  The download for the 3B model is approximately 1.8 GB.  It resumes
+automatically if interrupted --- you can safely press @kbd{Ctrl-C} and re-run
+the same command to continue.
+
+@strong{Important:} you only need to pull a model once.  The weights are
+stored permanently on disk (@pxref{Where Models Are Stored}) and reused
+across Ollama restarts.
+
+
+@node Listing Models
+@section Listing Models
+@cindex listing models
+@cindex ollama list
+
+To see every model you have downloaded:
+
+@example
+ollama list
+@end example
+
+Example output:
+
+@example
+NAME                                    ID              SIZE    MODIFIED
+qwen2.5-coder:3b-instruct-q4_K_M       abc123...       1.8 GB  2 minutes ago
+qwen2.5-coder:7b-instruct-q4_K_M       def456...       4.7 GB  1 hour ago
+@end example
+
+To inspect details about a specific model:
+
+@example
+ollama show qwen2.5-coder:3b-instruct-q4_K_M
+@end example
+
+You can also query the REST API directly:
+
+@example
+curl -s http://localhost:11434/api/tags | python3 -m json.tool
+@end example
+
+
+@node Where Models Are Stored
+@section Where Models Are Stored
+@cindex model storage location
+@cindex ~/.ollama
+
+Ollama stores all model data under:
+
+@example
+~/.ollama/models/
+@end example
+
+The layout inside is:
+
+@table @file
+@item blobs/
+The actual weight files.  Each file is named after its SHA-256 hash,
+for example @file{sha256-60e05f210007@dots{}}.  A single blob can be shared
+by multiple model variants (Ollama deduplicates weights automatically).
+
+@item manifests/
+Small JSON files that map a human-readable model name such as
+@samp{qwen2.5-coder:3b-instruct-q4_K_M} to the blob hashes that make up
+that model.
+@end table
+
+You never need to edit these files by hand.  Use @command{ollama list},
+@command{ollama pull}, and @command{ollama rm} to manage them.
+
+@strong{Disk usage check:}
+
+@example
+du -sh ~/.ollama/models/
+@end example
+
+
+@node Custom Storage Location
+@section Custom Storage Location
+@cindex OLLAMA_MODELS
+@cindex portable model storage
+
+By default Ollama writes models to @file{~/.ollama/models/}.  You can
+redirect this to any path --- a different disk partition, an external drive,
+or a shared network folder --- by setting the @env{OLLAMA_MODELS} environment
+variable before starting the server.
+
+@example
+export OLLAMA_MODELS=/media/external-drive/ollama-models
+ollama serve
+@end example
+
+All @command{ollama pull} and @command{ollama list} operations will use that
+path.  To make this permanent, add the export to your shell profile
+(@file{~/.zshrc} or @file{~/.bashrc}) @emph{and} to the Ollama systemd
+service override if you use one:
+
+@example
+sudo systemctl edit ollama
+@end example
+
+Then add:
+
+@example
+[Service]
+Environment="OLLAMA_MODELS=/media/external-drive/ollama-models"
+@end example
+
+After saving, reload and restart the service:
+
+@example
+sudo systemctl daemon-reload
+sudo systemctl restart ollama
+@end example
+
+
+@node Selecting a Model in Codebud
+@section Selecting a Model in Codebud
+@cindex OLLAMA_MODEL
+@cindex OLLAMA_BASE_URL
+
+Codebud reads two environment variables to find the model:
+
+@table @env
+@item OLLAMA_MODEL
+The exact model name to use, as it appears in @command{ollama list}.
+This variable @strong{must} be set; without it Codebud falls back to
+OpenAI or logs a warning and returns no plan.
+
+@item OLLAMA_BASE_URL
+The base URL of the Ollama server.  Defaults to
+@code{http://localhost:11434}.  Change this only if you are running Ollama
+on a different machine or a non-standard port.
+@end table
+
+Example --- run Codebud with the 3B model:
+
+@example
+export OLLAMA_MODEL=qwen2.5-coder:3b-instruct-q4_K_M
+python run_agent.py "create a hello.py that prints Hello, world"
+@end example
+
+Or inline for a one-off run:
+
+@example
+OLLAMA_MODEL=qwen2.5-coder:3b-instruct-q4_K_M python run_agent.py "..."
+@end example
+
+
+@node Switching Models
+@section Switching Models
+@cindex switching models
+
+To switch from one model to another, simply change @env{OLLAMA_MODEL} and
+run Codebud again.  No restart of the Ollama server is needed; it loads and
+unloads models from RAM on demand.
+
+@example
+# Switch from 3B to 7B
+export OLLAMA_MODEL=qwen2.5-coder:7b-instruct-q4_K_M
+python run_agent.py "refactor agent/planner.py to add retry logic"
+@end example
+
+If the new model has not been pulled yet, pull it first
+(@pxref{Pulling a Model}).
+
+
+@node Transferring Models
+@section Transferring Models
+@cindex transferring models
+@cindex copying models offline
+
+Because model weights can be several gigabytes and bandwidth may be expensive,
+you can copy already-downloaded models to another machine instead of pulling
+them again.
+
+@subsection Method 1 --- tar archive (offline copy)
+
+On the source machine:
+
+@example
+tar -czf ollama-models.tar.gz ~/.ollama/models/
+@end example
+
+Transfer @file{ollama-models.tar.gz} by USB drive, local network, or any
+other means.  On the target machine (with Ollama installed):
+
+@example
+mkdir -p ~/.ollama
+tar -xzf ollama-models.tar.gz -C ~/
+@end example
+
+After extraction, @command{ollama list} on the target machine will show the
+models immediately, as if they had been pulled normally.
+
+@subsection Method 2 --- shared or portable drive (zero-copy)
+
+If both machines can access the same physical drive or network share,
+point @env{OLLAMA_MODELS} at the shared path on each machine:
+
+@example
+export OLLAMA_MODELS=/media/shared-drive/ollama-models
+ollama serve
+@end example
+
+No copying is needed.  Both machines read the same blob files.
+
+@strong{Note:} do not run two Ollama servers writing to the same
+@env{OLLAMA_MODELS} path at the same time; concurrent writes can corrupt
+the manifest files.
+
+
+@node Removing Models
+@section Removing Models
+@cindex removing models
+@cindex ollama rm
+@cindex freeing disk space
+
+To delete a model and reclaim disk space:
+
+@example
+ollama rm qwen2.5-coder:7b-instruct-q4_K_M
+@end example
+
+This removes the manifest and any blobs that are not shared with another
+installed model.  Verify with @command{ollama list} and @command{du -sh
+~/.ollama/models/}.
+
+@strong{Warning:} this is permanent.  You will need to re-download
+(@command{ollama pull}) if you want the model back.
+
+
+@node Model Troubleshooting
+@section Troubleshooting
+@cindex troubleshooting, models
+
+@table @strong
+
+@item @samp{could not connect to a running Ollama instance}
+The Ollama server is not running.  Start it with @command{ollama serve} or
+@command{sudo systemctl start ollama}.
+
+@item @samp{model not found}
+The model name passed in @env{OLLAMA_MODEL} does not match any installed
+model.  Run @command{ollama list} to see what is available, and
+@command{ollama pull <name>} to download the missing model.
+
+@item Response times are very slow (minutes per prompt)
+You are likely running a model that is too large for your CPU.  Switch to a
+smaller variant (@pxref{Choosing a Model}).  Also check that Ollama is not
+swapping to disk:
+
+@example
+free -h
+cat /proc/$(pgrep ollama)/status | grep VmRSS
+@end example
+
+If @samp{available} RAM is near zero, you need a smaller model.
+
+@item @samp{LLM returned empty output} or request timeout in Codebud
+The HTTP request timed out before Ollama finished generating.  This usually
+means the model is too slow for the prompt size.  Try a smaller model, or
+wait for the model to finish loading into RAM (the first request after a
+server restart is always the slowest).
+
+@item Out of memory / Ollama killed by the OOM killer
+The model weights do not fit in RAM.  Check @command{ollama list} for the
+model size and compare it to @command{free -h}.  Switch to a smaller model
+or close other applications to free RAM.
+
+@end table
+
+
+@node Quick Recipes
+@section Quick Recipes
+@cindex quick recipes
+
+The five commands you will type most often:
+
+@table @strong
+
+@item Start the Ollama server
+@example
+ollama serve
+@end example
+
+@item Download the recommended model
+@example
+ollama pull qwen2.5-coder:3b-instruct-q4_K_M
+@end example
+
+@item Run Codebud with that model
+@example
+OLLAMA_MODEL=qwen2.5-coder:3b-instruct-q4_K_M \
+    python run_agent.py -i "your task here"
+@end example
+
+@item Back up all models to a single archive
+@example
+tar -czf ollama-models.tar.gz ~/.ollama/models/
+@end example
+
+@item Restore models on a new machine
+@example
+tar -xzf ollama-models.tar.gz -C ~/
+@end example
+
+@end table

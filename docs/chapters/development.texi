@@ -1,0 +1,8 @@
+@node Development
+@chapter Development
+@cindex development
+
+@strong{This chapter is a stub and will be expanded in a future session.}
+
+This chapter will cover running the test suite, adding new tools, iterating
+on the planner prompt, and contributing to the project.

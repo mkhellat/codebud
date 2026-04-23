@@ -1,0 +1,8 @@
+@node Glossary
+@chapter Glossary
+@cindex glossary
+
+@strong{This chapter is a stub and will be expanded in a future session.}
+
+Key terms: LLM, prompt, embedding, sandbox, plan step, tool, agent, Ollama,
+quantisation, token, context window.
