@@ -9,7 +9,7 @@ can carry clean JSON when piped. Plain-text fallback when not a TTY.
 import sys
 import threading
 import time
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 _IS_TTY = sys.stderr.isatty()
 
@@ -34,9 +34,10 @@ def _err(*args, end="\n", flush=False):
 # Plan display
 # ---------------------------------------------------------------------------
 
-def print_plan(plan: Dict[str, Any], *, verbose: bool = False) -> None:
+
+def print_plan(plan: dict[str, Any], *, verbose: bool = False) -> None:
     """Print a human-readable summary of a plan dict."""
-    steps: List[Dict] = plan.get("plan", [])
+    steps: list[dict] = plan.get("plan", [])
     n = len(steps)
     _err(f"\n{_BOLD}Plan ({n} step{'s' if n != 1 else ''}){_RESET}")
     for i, step in enumerate(steps, 1):
@@ -56,13 +57,13 @@ def print_plan_error(error: str) -> None:
     _err(f"{_DIM}Tip: run `codebud doctor` to check your environment.{_RESET}\n")
 
 
-def print_step_header(index: int, step: Dict[str, Any]) -> None:
+def print_step_header(index: int, step: dict[str, Any]) -> None:
     tool = step.get("tool", "?")
     desc = step.get("description", "")
     _err(f"{_BOLD}Step {index} — {tool}:{_RESET} {desc}")
 
 
-def print_step_result(result: Dict[str, Any], *, verbose: bool = False) -> None:
+def print_step_result(result: dict[str, Any], *, verbose: bool = False) -> None:
     """Print a one-line outcome for a step result dict."""
     rc = result.get("returncode", 0)
     stdout = result.get("stdout", "") or ""
@@ -88,6 +89,7 @@ def print_step_result(result: Dict[str, Any], *, verbose: bool = False) -> None:
 # Streaming progress indicator
 # ---------------------------------------------------------------------------
 
+
 class ProgressIndicator:
     """Shows a live spinner + elapsed time during LLM prefill, then token rate.
 
@@ -107,11 +109,11 @@ class ProgressIndicator:
     def __init__(self, no_progress: bool = False):
         self._no_progress = no_progress or not _IS_TTY
         self._started = 0.0
-        self._first_chunk_time: Optional[float] = None
+        self._first_chunk_time: float | None = None
         self._token_count = 0
         self._last_chunk_time = 0.0
         self._done = threading.Event()
-        self._thread: Optional[threading.Thread] = None
+        self._thread: threading.Thread | None = None
         self._spinner_idx = 0
 
     def start(self) -> None:
@@ -166,7 +168,9 @@ class ProgressIndicator:
                 # Generation phase
                 since_start = time.monotonic() - self._first_chunk_time
                 rate = self._token_count / since_start if since_start > 0 else 0
-                msg = (f"\r{spin_char} Generating... "
-                       f"tokens: {self._token_count} | {rate:.1f} t/s | "
-                       f"{elapsed:.0f}s elapsed")
+                msg = (
+                    f"\r{spin_char} Generating... "
+                    f"tokens: {self._token_count} | {rate:.1f} t/s | "
+                    f"{elapsed:.0f}s elapsed"
+                )
             _err(msg, end="", flush=True)

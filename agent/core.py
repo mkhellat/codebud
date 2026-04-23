@@ -24,11 +24,12 @@ This file contains NO UI logic and NO OpenClaw logic.
 It is purely the internal agent brain.
 """
 
-from typing import Callable, Dict, Any, Optional
+from collections.abc import Callable
+from typing import Any
 
-from .planner import LLMPlanner
 from .executor import Executor
 from .memory import MemoryStore
+from .planner import LLMPlanner
 from .safety import SafetyEngine
 from .sandbox import Sandbox
 from .tools.tool_registry import ToolRegistry
@@ -66,8 +67,8 @@ class AgentCore:
     def handle_user_message(
         self,
         message: str,
-        on_chunk: Optional[Callable[[str], None]] = None,
-    ) -> Dict[str, Any]:
+        on_chunk: Callable[[str], None] | None = None,
+    ) -> dict[str, Any]:
         """Called when the user sends a message. Returns a plan or plan_error.
 
         ``on_chunk`` is forwarded to the LLM backend to drive a live progress
@@ -81,19 +82,16 @@ class AgentCore:
         if plan_output.get("status") != "ok":
             return {
                 "status": "plan_error",
-                "error": plan_output.get("error", "Unknown planning error")
+                "error": plan_output.get("error", "Unknown planning error"),
             }
 
         # Validate plan structure
         if not self._validate_plan(plan_output):
-            return {
-                "status": "plan_error",
-                "error": "Planner returned malformed plan"
-            }
+            return {"status": "plan_error", "error": "Planner returned malformed plan"}
 
         return plan_output
 
-    def regenerate(self, payload: Dict[str, Any]) -> Dict[str, Any]:
+    def regenerate(self, payload: dict[str, Any]) -> dict[str, Any]:
         """
         Called when OpenClaw requests plan regeneration.
 
@@ -103,24 +101,18 @@ class AgentCore:
         3. Validate and return it
         """
         if not self.last_user_message:
-            return {
-                "status": "plan_error",
-                "error": "No previous user message to regenerate from"
-            }
+            return {"status": "plan_error", "error": "No previous user message to regenerate from"}
 
         plan_output = self.planner.generate_plan(self.last_user_message)
 
         if plan_output.get("status") != "ok":
             return {
                 "status": "plan_error",
-                "error": plan_output.get("error", "Unknown planning error")
+                "error": plan_output.get("error", "Unknown planning error"),
             }
 
         if not self._validate_plan(plan_output):
-            return {
-                "status": "plan_error",
-                "error": "Planner returned malformed plan"
-            }
+            return {"status": "plan_error", "error": "Planner returned malformed plan"}
 
         return plan_output
 
@@ -128,7 +120,7 @@ class AgentCore:
     # Internal helpers
     # ----------------------------------------------------------------------
 
-    def _validate_plan(self, plan_output: Dict[str, Any]) -> bool:
+    def _validate_plan(self, plan_output: dict[str, Any]) -> bool:
         """
         Ensures the plan follows the Cursor-style contract:
 

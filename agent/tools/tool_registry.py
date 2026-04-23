@@ -14,13 +14,13 @@ The registry is used by:
 - core.py
 """
 
-from typing import Dict, Any
+from typing import Any
 
-from .file_io import FileWriteTool, FileReadTool
-from .patcher import PatchTool
 from .commands import CommandTool
+from .embeddings import EmbeddingSearchTool, EmbedTool
+from .file_io import FileReadTool, FileWriteTool
+from .patcher import PatchTool
 from .web_search import WebSearchTool
-from .embeddings import EmbedTool, EmbeddingSearchTool
 
 
 class ToolRegistry:
@@ -34,7 +34,7 @@ class ToolRegistry:
     """
 
     def __init__(self, sandbox):
-        self.tools: Dict[str, Any] = {}
+        self.tools: dict[str, Any] = {}
 
         # Register tools
         self._register("file_write", FileWriteTool())

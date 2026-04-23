@@ -19,7 +19,7 @@ The executor does NOT:
 - handle UI logic
 """
 
-from typing import Dict, Any
+from typing import Any
 
 
 class Executor:
@@ -41,7 +41,7 @@ class Executor:
     # Public API
     # ------------------------------------------------------------------
 
-    def execute_plan(self, plan_output: Dict[str, Any]) -> Dict[str, Any]:
+    def execute_plan(self, plan_output: dict[str, Any]) -> dict[str, Any]:
         """
         Execute a validated plan.
 
@@ -84,7 +84,7 @@ class Executor:
                 return {
                     "status": "step_error",
                     "error": f"Tool '{tool_name}' crashed: {e}",
-                    "step": step
+                    "step": step,
                 }
 
             # Validate tool result structure
@@ -92,7 +92,7 @@ class Executor:
                 return {
                     "status": "step_error",
                     "error": f"Tool '{tool_name}' returned malformed result",
-                    "step": step
+                    "step": step,
                 }
 
             # Store result
@@ -100,11 +100,7 @@ class Executor:
                 "stdout": tool_result.get("stdout", ""),
                 "stderr": tool_result.get("stderr", ""),
                 "returncode": tool_result.get("returncode", 0),
-                "metadata": {
-                    "description": step["description"],
-                    "tool": tool_name,
-                    "args": args
-                }
+                "metadata": {"description": step["description"], "tool": tool_name, "args": args},
             }
 
             # Add memory snapshot
@@ -112,22 +108,15 @@ class Executor:
 
             # Stop on error
             if tool_result.get("returncode", 0) != 0:
-                return {
-                    "status": "step_error",
-                    "error": f"Step '{step_id}' failed",
-                    "step": step
-                }
+                return {"status": "step_error", "error": f"Step '{step_id}' failed", "step": step}
 
-        return {
-            "status": "ok",
-            "results": results
-        }
+        return {"status": "ok", "results": results}
 
     # ------------------------------------------------------------------
     # Internal helpers
     # ------------------------------------------------------------------
 
-    def _validate_tool_result(self, result: Dict[str, Any]) -> bool:
+    def _validate_tool_result(self, result: dict[str, Any]) -> bool:
         """
         Ensures tool results follow the contract:
 

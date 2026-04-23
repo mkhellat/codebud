@@ -12,8 +12,8 @@ import json
 import os
 import shutil
 import sys
+from collections.abc import Callable
 from pathlib import Path
-from typing import Callable, List, Tuple
 
 import requests
 
@@ -24,7 +24,7 @@ _REPO_ROOT = Path(__file__).resolve().parents[2]
 # Individual checks
 # ---------------------------------------------------------------------------
 
-CheckResult = Tuple[bool, str, str]  # (passed, label, hint_on_failure)
+CheckResult = tuple[bool, str, str]  # (passed, label, hint_on_failure)
 
 
 def check_python_version() -> CheckResult:
@@ -37,6 +37,7 @@ def check_python_version() -> CheckResult:
 def check_agent_importable() -> CheckResult:
     try:
         import agent  # noqa: F401
+
         return True, "agent package is importable", ""
     except ImportError:
         hint = "Run: source .venv/bin/activate && pip install -e '.[dev]'"
@@ -70,21 +71,18 @@ def check_ollama_reachable() -> CheckResult:
 def check_model_pulled() -> CheckResult:
     model = os.environ.get("OLLAMA_MODEL", "")
     if not model:
-        return False, "OLLAMA_MODEL not set (skipping model-pull check)", \
-               "Set OLLAMA_MODEL first."
+        return False, "OLLAMA_MODEL not set (skipping model-pull check)", "Set OLLAMA_MODEL first."
     try:
         r = requests.get(f"{_OLLAMA_BASE}/api/tags", timeout=3)
         if r.status_code != 200:
-            return False, "Cannot reach Ollama to check model list", \
-                   "sudo systemctl start ollama"
+            return False, "Cannot reach Ollama to check model list", "sudo systemctl start ollama"
         names = [m.get("name", "") for m in r.json().get("models", [])]
         if model in names:
             return True, f"Model '{model}' is available", ""
         hint = f"ollama pull {model}"
         return False, f"Model '{model}' is NOT pulled", hint
     except Exception:
-        return False, "Could not read model list from Ollama", \
-               "sudo systemctl start ollama"
+        return False, "Could not read model list from Ollama", "sudo systemctl start ollama"
 
 
 def check_config_files() -> CheckResult:
@@ -94,13 +92,15 @@ def check_config_files() -> CheckResult:
     ]
     for path in files:
         if not path.exists():
-            return False, f"Missing config file: {path.name}", \
-                   f"Ensure {path} exists (check git checkout)."
+            return (
+                False,
+                f"Missing config file: {path.name}",
+                f"Ensure {path} exists (check git checkout).",
+            )
         try:
             json.loads(path.read_text())
         except json.JSONDecodeError as exc:
-            return False, f"Invalid JSON in {path.name}: {exc}", \
-                   f"Fix the JSON in {path}."
+            return False, f"Invalid JSON in {path.name}: {exc}", f"Fix the JSON in {path}."
     return True, "Config files OK (harmless_commands.json, powerful_commands.json)", ""
 
 
@@ -109,7 +109,7 @@ def check_disk_space() -> CheckResult:
     if not models_dir.exists():
         return True, "~/.ollama/models/ not found (no models downloaded yet)", ""
     usage = shutil.disk_usage(models_dir)
-    free_gb = usage.free / 1024 ** 3
+    free_gb = usage.free / 1024**3
     if free_gb >= 2.0:
         return True, f"Free disk space: {free_gb:.1f} GB", ""
     hint = "Free up disk space; at least 2 GB is needed for the smallest model."
@@ -119,8 +119,7 @@ def check_disk_space() -> CheckResult:
 def check_ram() -> CheckResult:
     try:
         with open("/proc/meminfo") as f:
-            lines = {k: int(v.split()[0]) for k, _, *v in
-                     (l.partition(":") for l in f)}
+            lines = {k: int(v.split()[0]) for k, _, *v in (ln.partition(":") for ln in f)}
         available_mb = lines.get("MemAvailable", 0) // 1024
         model = os.environ.get("OLLAMA_MODEL", "")
         # Rough RAM requirements per model family
@@ -137,8 +136,10 @@ def check_ram() -> CheckResult:
                 break
         if available_mb >= needed_mb:
             return True, f"Available RAM: {available_mb} MB (need ~{needed_mb} MB)", ""
-        hint = (f"Close other applications. The selected model needs ~{needed_mb} MB "
-                "of free RAM; only {available_mb} MB is available.")
+        hint = (
+            f"Close other applications. The selected model needs ~{needed_mb} MB "
+            "of free RAM; only {available_mb} MB is available."
+        )
         return False, f"Low RAM: {available_mb} MB available, ~{needed_mb} MB needed", hint
     except Exception:
         return True, "RAM check skipped (could not read /proc/meminfo)", ""
@@ -148,7 +149,7 @@ def check_ram() -> CheckResult:
 # Runner
 # ---------------------------------------------------------------------------
 
-_CHECKS: List[Callable[[], CheckResult]] = [
+_CHECKS: list[Callable[[], CheckResult]] = [
     check_python_version,
     check_agent_importable,
     check_ollama_model_set,

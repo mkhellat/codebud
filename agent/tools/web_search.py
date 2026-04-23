@@ -25,7 +25,7 @@ import json
 import logging
 import os
 import re
-from typing import Any, Dict, List
+from typing import Any
 
 import requests
 
@@ -41,7 +41,7 @@ _MAX_RESULTS = 5
 # ---------------------------------------------------------------------------
 
 
-def _ddg_search(query: str, max_results: int = _MAX_RESULTS) -> List[Dict[str, str]]:
+def _ddg_search(query: str, max_results: int = _MAX_RESULTS) -> list[dict[str, str]]:
     """Scrape DuckDuckGo Lite and return structured result dicts.
 
     DuckDuckGo Lite is a minimal HTML page served via POST with a 'q'
@@ -98,18 +98,17 @@ class WebSearchTool:
         else "Web search (currently disabled — set WEB_SEARCH_ENABLED=1 to enable)."
     )
     usage_hint = (
-        'Use to look up current information on the web. '
-        'Only available when WEB_SEARCH_ENABLED=1. '
+        "Use to look up current information on the web. "
+        "Only available when WEB_SEARCH_ENABLED=1. "
         'Required args: "query" (string).'
     )
 
-    def run(self, args: Dict[str, Any]) -> Dict[str, Any]:
+    def run(self, args: dict[str, Any]) -> dict[str, Any]:
         if not _ENABLED:
             return {
                 "stdout": "",
                 "stderr": (
-                    "Web search is disabled. "
-                    "Set WEB_SEARCH_ENABLED=1 to enable outbound search."
+                    "Web search is disabled. Set WEB_SEARCH_ENABLED=1 to enable outbound search."
                 ),
                 "returncode": 1,
             }

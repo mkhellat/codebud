@@ -22,9 +22,9 @@ lists `openai` in requirements so importing it is safe.  No network
 operations are performed unless a real model is requested.
 """
 
-import os
 import logging
-from typing import Callable, Optional
+import os
+from collections.abc import Callable
 
 import requests
 
@@ -37,7 +37,7 @@ _OLLAMA_BASE = os.environ.get("OLLAMA_BASE_URL", "http://localhost:11434")
 def call_llm(
     prompt: str,
     timeout: float = 600.0,
-    on_chunk: Optional[Callable[[str], None]] = None,
+    on_chunk: Callable[[str], None] | None = None,
 ) -> str:
     """Send ``prompt`` to the configured LLM and return the raw text output.
 
@@ -99,7 +99,7 @@ def _call_ollama(
     model: str,
     prompt: str,
     timeout: float,
-    on_chunk: Optional[Callable[[str], None]] = None,
+    on_chunk: Callable[[str], None] | None = None,
 ) -> str:
     """Stream from the Ollama generate endpoint and return the full text.
 

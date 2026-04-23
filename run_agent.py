@@ -31,6 +31,7 @@ _KNOWN_SUBCOMMANDS = {"run", "plan", "chat", "doctor", "models", "config", "vers
 
 def _make_agent():
     from agent.core import AgentCore
+
     return AgentCore()
 
 
@@ -44,8 +45,13 @@ def _no_progress(args) -> bool:
 
 
 def cmd_run(args):
-    from agent.cli.display import ProgressIndicator, print_plan, print_plan_error, \
-        print_step_header, print_step_result
+    from agent.cli.display import (
+        ProgressIndicator,
+        print_plan,
+        print_plan_error,
+        print_step_header,
+        print_step_result,
+    )
     from agent.cli.errors import print_error
 
     agent = _make_agent()
@@ -112,8 +118,13 @@ def cmd_plan(args):
 
 
 def cmd_chat(args):
-    from agent.cli.display import ProgressIndicator, print_plan, print_plan_error, \
-        print_step_header, print_step_result
+    from agent.cli.display import (
+        ProgressIndicator,
+        print_plan,
+        print_plan_error,
+        print_step_header,
+        print_step_result,
+    )
     from agent.cli.errors import print_error
 
     agent = _make_agent()
@@ -151,7 +162,7 @@ def cmd_chat(args):
                 break
             if approval == "a":
                 # Auto-execute remaining steps
-                for j, s in enumerate(steps[i - 1:], i):
+                for j, s in enumerate(steps[i - 1 :], i):
                     print_step_header(j, s)
                     result = agent.executor.execute_plan({"status": "ok", "plan": [s]})
                     if result.get("status") == "ok":
@@ -182,6 +193,7 @@ def cmd_chat(args):
 
 def cmd_doctor(_args):
     from agent.cli.doctor import run_doctor
+
     sys.exit(run_doctor())
 
 
@@ -213,7 +225,7 @@ def cmd_models(_args):
     for m in models:
         name = m.get("name", "")
         size_bytes = m.get("size", 0)
-        size_gb = size_bytes / 1024 ** 3
+        size_gb = size_bytes / 1024**3
         marker = "<-- active" if name == selected else ""
         print(f"  {name:<43} {size_gb:>6.1f}G  {marker}")
 
@@ -278,7 +290,8 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Suppress the live progress indicator (useful when piping output).",
     )
     parser.add_argument(
-        "--verbose", "-v",
+        "--verbose",
+        "-v",
         action="store_true",
         help="Show full step output instead of a one-line summary.",
     )

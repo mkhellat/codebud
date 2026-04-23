@@ -16,7 +16,7 @@ The tool:
 - Returns stdout/stderr/returncode
 """
 
-from typing import Dict, Any
+from typing import Any
 
 
 class CommandTool:
@@ -31,7 +31,7 @@ class CommandTool:
 
     description = "Execute a shell command inside the sandbox."
     usage_hint = (
-        'Use for any shell operation: listing files, running tests, searching code, '
+        "Use for any shell operation: listing files, running tests, searching code, "
         'checking git status, etc. Required args: "cmd" (string, a shell command). '
         'Examples: {"cmd": "ls -la"}, {"cmd": "pytest -q"}, {"cmd": "grep -r TODO ."}'
     )
@@ -39,15 +39,11 @@ class CommandTool:
     def __init__(self, sandbox):
         self.sandbox = sandbox
 
-    def run(self, args: Dict[str, Any]) -> Dict[str, Any]:
+    def run(self, args: dict[str, Any]) -> dict[str, Any]:
         cmd = args.get("cmd")
 
         if not cmd:
-            return {
-                "stdout": "",
-                "stderr": "Missing required argument: cmd",
-                "returncode": 1
-            }
+            return {"stdout": "", "stderr": "Missing required argument: cmd", "returncode": 1}
 
         # Delegate to sandbox
         return self.sandbox.run_command(cmd)

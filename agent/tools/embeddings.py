@@ -19,10 +19,10 @@ Environment variables:
 """
 
 import json
-import os
-import math
 import logging
-from typing import Dict, Any, List, Optional
+import math
+import os
+from typing import Any
 
 import requests
 
@@ -43,7 +43,7 @@ _DEFAULT_EMBED_MODEL = (
 # ---------------------------------------------------------------------------
 
 
-def ollama_embed(text: str, model: Optional[str] = None) -> List[float]:
+def ollama_embed(text: str, model: str | None = None) -> list[float]:
     """Return a real embedding vector from the Ollama /api/embed endpoint.
 
     Raises RuntimeError if the server is unreachable or returns an error,
@@ -62,13 +62,13 @@ def ollama_embed(text: str, model: Optional[str] = None) -> List[float]:
     return embeddings[0]
 
 
-def stub_embedding(text: str) -> List[float]:
+def stub_embedding(text: str) -> list[float]:
     """Deterministic hash-based embedding (16 floats, offline fallback)."""
     h = abs(hash(text))
     return [(h % (i + 7)) / 10.0 for i in range(16)]
 
 
-def get_embedding(text: str) -> List[float]:
+def get_embedding(text: str) -> list[float]:
     """Get an embedding, using Ollama when available and the stub otherwise."""
     try:
         return ollama_embed(text)
@@ -82,11 +82,11 @@ def get_embedding(text: str) -> List[float]:
 # ---------------------------------------------------------------------------
 
 
-def cosine_similarity(a: List[float], b: List[float]) -> float:
+def cosine_similarity(a: list[float], b: list[float]) -> float:
     if len(a) != len(b):
         # Dimension mismatch (e.g. mixing stub and real vectors in index)
         return 0.0
-    dot = sum(x * y for x, y in zip(a, b))
+    dot = sum(x * y for x, y in zip(a, b, strict=True))
     norm_a = math.sqrt(sum(x * x for x in a))
     norm_b = math.sqrt(sum(x * x for x in b))
     if norm_a == 0 or norm_b == 0:
@@ -104,11 +104,11 @@ class EmbedTool:
 
     description = "Generate an embedding vector for text."
     usage_hint = (
-        'Use to embed a piece of text so it can be stored and later searched. '
+        "Use to embed a piece of text so it can be stored and later searched. "
         'Required args: "text" (string). Returns a vector stored in the embedding index.'
     )
 
-    def run(self, args: Dict[str, Any]) -> Dict[str, Any]:
+    def run(self, args: dict[str, Any]) -> dict[str, Any]:
         text = args.get("text")
         if not text:
             return {"stdout": "", "stderr": "Missing required argument: text", "returncode": 1}
@@ -122,7 +122,7 @@ class EmbeddingSearchTool:
 
     description = "Search stored embeddings and return top-k matches."
     usage_hint = (
-        'Use to find previously embedded content that is semantically similar to a query. '
+        "Use to find previously embedded content that is semantically similar to a query. "
         'Required args: "query" (string). Optional: "top_k" (int, default 5).'
     )
 
@@ -130,7 +130,7 @@ class EmbeddingSearchTool:
         self._ensure_storage()
         self.index = self._load_index()
 
-    def run(self, args: Dict[str, Any]) -> Dict[str, Any]:
+    def run(self, args: dict[str, Any]) -> dict[str, Any]:
         query = args.get("query")
         k = args.get("k", 5)
         if not query:
@@ -156,7 +156,7 @@ class EmbeddingSearchTool:
 
     def _load_index(self):
         try:
-            with open(EMBEDDING_INDEX_PATH, "r") as f:
+            with open(EMBEDDING_INDEX_PATH) as f:
                 return json.load(f)
         except Exception:
             return []

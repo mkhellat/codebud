@@ -20,7 +20,7 @@ This is a simplified patcher suitable for coding agents.
 """
 
 import os
-from typing import Dict, Any
+from typing import Any
 
 
 class PatchTool:
@@ -35,36 +35,24 @@ class PatchTool:
 
     description = "Apply a unified diff patch to a file."
     usage_hint = (
-        'Use to make targeted edits to an existing file using a unified diff. '
-        'Prefer this over file_write when you only want to change a few lines. '
+        "Use to make targeted edits to an existing file using a unified diff. "
+        "Prefer this over file_write when you only want to change a few lines. "
         'Required args: "patch" (string, a standard unified diff with --- / +++ headers). '
         'Example: {"patch": "--- a/foo.py\\n+++ b/foo.py\\n@@ -1,3 +1,3 @@\\n-old\\n+new\\n"}'
     )
 
-    def run(self, args: Dict[str, Any]) -> Dict[str, Any]:
+    def run(self, args: dict[str, Any]) -> dict[str, Any]:
         patch_text = args.get("patch")
 
         if not patch_text:
-            return {
-                "stdout": "",
-                "stderr": "Missing required argument: patch",
-                "returncode": 1
-            }
+            return {"stdout": "", "stderr": "Missing required argument: patch", "returncode": 1}
 
         try:
             result = self._apply_patch(patch_text)
-            return {
-                "stdout": result,
-                "stderr": "",
-                "returncode": 0
-            }
+            return {"stdout": result, "stderr": "", "returncode": 0}
 
         except Exception as e:
-            return {
-                "stdout": "",
-                "stderr": f"PatchTool error: {e}",
-                "returncode": 1
-            }
+            return {"stdout": "", "stderr": f"PatchTool error: {e}", "returncode": 1}
 
     # ------------------------------------------------------------------
     # Internal patch logic
@@ -83,12 +71,11 @@ class PatchTool:
         lines = patch_text.split("\n")
 
         # Extract target file from --- a/file and +++ b/file
-        old_file = None
         new_file = None
 
         for line in lines:
             if line.startswith("--- "):
-                old_file = line[4:].strip()
+                pass  # source path — unused; target path comes from +++ line
             elif line.startswith("+++ "):
                 new_file = line[4:].strip()
 
@@ -105,11 +92,10 @@ class PatchTool:
             raise FileNotFoundError(f"Target file not found: {target_path}")
 
         # Load original file
-        with open(target_path, "r") as f:
+        with open(target_path) as f:
             original_lines = f.readlines()
 
         patched_lines = []
-        i = 0
         j = 0
 
         # Apply hunks

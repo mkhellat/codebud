@@ -29,7 +29,8 @@ The planner NEVER exposes chain-of-thought. It only returns the final plan.
 """
 
 import json
-from typing import Callable, Dict, Any, Optional
+from collections.abc import Callable
+from typing import Any
 
 from .llm_stub import call_llm
 
@@ -54,8 +55,8 @@ class LLMPlanner:
     def generate_plan(
         self,
         user_message: str,
-        on_chunk: Optional[Callable[[str], None]] = None,
-    ) -> Dict[str, Any]:
+        on_chunk: Callable[[str], None] | None = None,
+    ) -> dict[str, Any]:
         """Generate a plan using the LLM.
 
         Makes one primary attempt and, if parsing fails, one automatic retry
@@ -80,8 +81,8 @@ class LLMPlanner:
     def _attempt(
         self,
         prompt: str,
-        on_chunk: Optional[Callable[[str], None]] = None,
-    ) -> Optional[Dict[str, Any]]:
+        on_chunk: Callable[[str], None] | None = None,
+    ) -> dict[str, Any] | None:
         """Call the LLM once and return a valid plan dict, or None on failure."""
         llm_output = call_llm(prompt, on_chunk=on_chunk)
         if not llm_output:
@@ -107,7 +108,7 @@ class LLMPlanner:
     # Prompt Construction
     # ------------------------------------------------------------------
 
-    _FEW_SHOT_EXAMPLES = '''\
+    _FEW_SHOT_EXAMPLES = """\
 EXAMPLES (study these carefully before responding):
 
 Example 1 — list files in the current directory:
@@ -139,7 +140,7 @@ Example 6 — cannot help:
 User: "order me a pizza"
 Response:
 {"status": "plan_error", "error": "This request cannot be fulfilled with the available tools."}
-'''
+"""
 
     def _build_prompt(self, user_message: str) -> str:
         """Build the full planning prompt with tools, rules, examples, and request."""
@@ -192,7 +193,7 @@ Format: {{"status":"ok","plan":[{{"id":"step_0","description":"...","tool":"..."
     # Validation
     # ------------------------------------------------------------------
 
-    def _validate_plan_structure(self, plan_json: Dict[str, Any]) -> bool:
+    def _validate_plan_structure(self, plan_json: dict[str, Any]) -> bool:
         """
         Validate the structure of the LLM-generated plan.
         """
@@ -240,7 +241,7 @@ Format: {{"status":"ok","plan":[{{"id":"step_0","description":"...","tool":"..."
         text = text.strip()
         if text.startswith("```"):
             # Drop the opening fence line (e.g. ```json or ```)
-            text = text[text.index("\n") + 1:] if "\n" in text else text[3:]
+            text = text[text.index("\n") + 1 :] if "\n" in text else text[3:]
             # Drop the closing fence if present
             if text.rstrip().endswith("```"):
                 text = text.rstrip()[:-3]

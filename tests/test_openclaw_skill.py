@@ -7,7 +7,6 @@ binary is accessible to the gateway's skill checker.
 
 import shutil
 import subprocess
-import sys
 from pathlib import Path
 
 import pytest
@@ -19,6 +18,7 @@ MANAGED_SKILL = Path.home() / ".openclaw" / "skills" / "codebud" / "SKILL.md"
 # ---------------------------------------------------------------------------
 # SKILL.md content tests
 # ---------------------------------------------------------------------------
+
 
 class TestSkillMd:
     def test_skill_md_exists(self):
@@ -55,6 +55,7 @@ class TestSkillMd:
 # Binary availability test
 # ---------------------------------------------------------------------------
 
+
 class TestBinaryAvailability:
     def test_codebud_binary_in_path(self):
         assert shutil.which("codebud") is not None, (
@@ -87,6 +88,7 @@ class TestBinaryAvailability:
 # openclaw CLI integration (requires openclaw in PATH)
 # ---------------------------------------------------------------------------
 
+
 class TestOpenClawIntegration:
     @pytest.fixture(autouse=True)
     def require_openclaw(self):
@@ -113,7 +115,7 @@ class TestOpenClawIntegration:
         )
         assert result.returncode == 0
         lines = result.stdout.splitlines()
-        codebud_line = next((l for l in lines if "codebud" in l), None)
+        codebud_line = next((ln for ln in lines if "codebud" in ln), None)
         assert codebud_line is not None, "codebud not in skill list"
         assert "ready" in codebud_line, (
             f"codebud skill is not ready:\n{codebud_line}\n"

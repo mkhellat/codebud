@@ -21,8 +21,7 @@ It does NOT:
 
 import json
 import os
-from typing import Dict, Any, List
-
+from typing import Any
 
 CONFIG_DIR = "config"
 HARMLESS_PATH = os.path.join(CONFIG_DIR, "harmless_commands.json")
@@ -49,7 +48,7 @@ class SafetyEngine:
     # Public API
     # ------------------------------------------------------------------
 
-    def validate_step(self, step: Dict[str, Any]) -> bool:
+    def validate_step(self, step: dict[str, Any]) -> bool:
         """
         Validate a single step.
 
@@ -106,10 +105,10 @@ class SafetyEngine:
         # Otherwise: reject
         return False
 
-    def _load_json(self, path: str) -> List[str]:
+    def _load_json(self, path: str) -> list[str]:
         """Load a JSON list from disk."""
         try:
-            with open(path, "r") as f:
+            with open(path) as f:
                 return json.load(f)
         except Exception:
             return []

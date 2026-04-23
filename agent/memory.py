@@ -19,8 +19,7 @@ The MemoryStore exposes:
 import json
 import os
 from datetime import datetime
-from typing import Dict, Any, List
-
+from typing import Any
 
 MEMORY_PATH = "data/memory/entries.json"
 
@@ -37,7 +36,7 @@ class MemoryStore:
     """
 
     def __init__(self):
-        self.history: List[Dict[str, Any]] = []
+        self.history: list[dict[str, Any]] = []
         self._ensure_storage()
         self._load()
 
@@ -45,7 +44,7 @@ class MemoryStore:
     # Public API
     # ------------------------------------------------------------------
 
-    def add_snapshot(self, step: Dict[str, Any], result: Dict[str, Any]):
+    def add_snapshot(self, step: dict[str, Any], result: dict[str, Any]):
         """
         Add a new memory snapshot.
 
@@ -60,10 +59,7 @@ class MemoryStore:
         """
         snapshot = {
             "timestamp": datetime.utcnow().isoformat(),
-            "data": {
-                "step": step,
-                "result": result
-            }
+            "data": {"step": step, "result": result},
         }
 
         self.history.append(snapshot)
@@ -83,7 +79,7 @@ class MemoryStore:
     def _load(self):
         """Load memory snapshots from disk."""
         try:
-            with open(MEMORY_PATH, "r") as f:
+            with open(MEMORY_PATH) as f:
                 self.history = json.load(f)
         except Exception:
             self.history = []
