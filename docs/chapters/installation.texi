@@ -2,7 +2,228 @@
 @chapter Installation
 @cindex installation
 
-@strong{This chapter is a stub and will be expanded in a future session.}
+This chapter walks you through installing everything Codebud needs on
+Arch Linux: system packages, Ollama, the Python virtual environment, and
+the Codebud package itself.  If you are on another distribution, the
+steps are the same in spirit --- substitute your package manager where
+@command{pacman} appears.
 
-This chapter will cover system prerequisites, Python virtual environment
-setup, installing dependencies, and running the editable install.
+@menu
+* System Requirements::         What hardware and OS you need.
+* System Packages::             Installing Python, Node.js, and build tools.
+* Installing Ollama::           Getting the local LLM server.
+* Cloning Codebud::             Getting the source code.
+* Python Environment::          Creating the virtual environment and installing deps.
+* Verifying the Install::       Running a quick sanity check.
+@end menu
+
+
+@node System Requirements
+@section System Requirements
+@cindex system requirements
+
+@table @strong
+@item OS
+Arch Linux (rolling).  Other systemd-based distributions work with minor
+adjustments.
+@item RAM
+8 GB minimum (for the 3B model).  16 GB recommended.
+@item Disk
+~3 GB for the recommended model, plus ~100 MB for the code and venv.
+@item CPU
+Any modern x86-64.  No GPU required; see @ref{Choosing a Model} for
+speed expectations.
+@item Network
+Required once to install packages and pull the model.  The agent itself
+runs fully offline after that.
+@end table
+
+
+@node System Packages
+@section System Packages
+@cindex pacman
+@cindex system packages
+
+First make sure your system is up to date:
+
+@example
+sudo pacman -Syu
+@end example
+
+Then install the required packages in one command:
+
+@example
+sudo pacman -S python python-pip python-virtualenv \
+               git curl base-devel nodejs npm
+@end example
+
+@table @strong
+@item python, python-pip, python-virtualenv
+Codebud and all its dependencies are pure Python.
+@item git
+Required to clone the repository.
+@item curl, base-devel
+Used when building native extensions (some pip packages compile C code).
+@item nodejs, npm
+Required for the OpenClaw UI gateway (@pxref{Usage}).
+@end table
+
+Verify the key tools are present:
+
+@example
+python --version    # expect Python 3.11 or later
+git --version
+node --version
+@end example
+
+
+@node Installing Ollama
+@section Installing Ollama
+@cindex Ollama, installation
+@cindex AUR
+
+Ollama is the local LLM server.  Codebud sends every prompt to it
+over a local HTTP connection.
+
+@subsection Option A --- AUR (recommended on Arch)
+
+If you have an AUR helper installed, use it so that Ollama is managed
+by pacman and upgrades cleanly:
+
+@example
+yay -S ollama
+# or:
+paru -S ollama
+@end example
+
+@subsection Option B --- Official installer script
+
+If you do not use the AUR, the official script works on any distribution:
+
+@example
+curl -fsSL https://ollama.com/install.sh | sh
+@end example
+
+This installs @file{/usr/local/bin/ollama} and optionally a systemd unit.
+
+@strong{Note:} the AUR package is preferred on Arch because it integrates
+with @command{pacman} for upgrades, handles the service unit correctly,
+and does not require running an untrusted shell script as root.
+
+@subsection Starting Ollama
+
+After installation, start the server:
+
+@example
+# One-off (for testing):
+ollama serve
+
+# Permanent (recommended):
+sudo systemctl enable --now ollama
+@end example
+
+Verify it is running:
+
+@example
+curl http://localhost:11434/api/tags
+@end example
+
+You should see a JSON response.  If you get @samp{Connection refused},
+the server is not running --- start it with one of the methods above.
+
+For full model management instructions (pulling, storing, transferring
+models) see @ref{Model Management}.
+
+
+@node Cloning Codebud
+@section Cloning Codebud
+@cindex cloning, repository
+
+@example
+git clone https://github.com/mkhellat/codebud.git
+cd codebud
+@end example
+
+The repository layout:
+
+@example
+agent/          Core agent (planner, executor, safety, tools, memory)
+config/         Safety policy JSON files
+data/           Embedding index and memory snapshots
+docs/           This manual (GNU Texinfo)
+openclaw/       OpenClaw skill wrapper
+tests/          Pytest test suite
+run_agent.py    CLI entry point
+@end example
+
+
+@node Python Environment
+@section Python Environment
+@cindex virtual environment
+@cindex pip install
+
+Create and activate a virtual environment:
+
+@example
+python -m venv .venv
+source .venv/bin/activate
+@end example
+
+Your shell prompt will show @samp{(.venv)} when the environment is
+active.  Install Codebud in editable mode together with dev dependencies:
+
+@example
+pip install -e ".[dev]"
+@end example
+
+This installs:
+@itemize
+@item @code{openai}, @code{requests}, @code{tiktoken} --- runtime deps
+@item @code{pytest}, @code{ruff} --- dev deps
+@item the @command{codebud} CLI entry point (maps to @code{run_agent:main})
+@end itemize
+
+To deactivate the environment later:
+
+@example
+deactivate
+@end example
+
+To reactivate in a new shell:
+
+@example
+source .venv/bin/activate
+@end example
+
+
+@node Verifying the Install
+@section Verifying the Install
+@cindex verification
+
+@subsection Run the test suite
+
+@example
+pytest -q
+@end example
+
+All tests should pass.  No Ollama connection is needed for the tests.
+
+@subsection Smoke-test the agent
+
+Pull the recommended model if you have not already (@pxref{Pulling a Model}),
+then:
+
+@example
+OLLAMA_MODEL=qwen2.5-coder:3b-instruct-q4_K_M \
+    python run_agent.py "list files in the current directory"
+@end example
+
+You should see a JSON response with @code{"status": "ok"} and a plan
+array.  On a CPU-only laptop, expect to wait 4--6 minutes for the
+first response while the model loads and processes the prompt.
+Subsequent calls reuse the loaded model and are faster.
+
+@subsection Troubleshooting
+
+If the agent returns @code{"status": "plan_error"}, see
+@ref{Troubleshooting} for common causes and fixes.
