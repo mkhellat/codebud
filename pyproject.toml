@@ -28,5 +28,8 @@ include = ["agent*", "openclaw*"]
 requires = ["setuptools"]
 build-backend = "setuptools.build_meta"
 
+[tool.pytest.ini_options]
+pythonpath = ["."]
+
 [tool.ruff]
 line-length = 100

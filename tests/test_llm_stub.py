@@ -22,7 +22,7 @@ def test_ollama_path(monkeypatch):
     monkeypatch.setattr(llm_stub, "_ollama_available", lambda: True)
     called = {}
 
-    def fake_call(model, prompt, timeout):
+    def fake_call(model, prompt, timeout, on_chunk=None):
         called["model"] = model
         called["prompt"] = prompt
         return "ollama-output"
