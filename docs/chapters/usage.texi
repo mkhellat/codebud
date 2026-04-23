@@ -2,7 +2,543 @@
 @chapter Usage
 @cindex usage
 
-@strong{This chapter is a stub and will be expanded in a future session.}
+This chapter explains how to use Codebud from the command line.  It
+covers every subcommand, the interactive chat mode, how to read the
+output, and how to get help when something goes wrong.
 
-This chapter will cover running @command{run_agent.py}, the interactive
-approval mode (@option{-i}), and the OpenClaw skill interface.
+@menu
+* Overview::                    What Codebud does with your request.
+* Quick Start::                 The five-minute path to your first result.
+* Subcommands::                 Reference for every subcommand.
+* The run Subcommand::          Plan and execute a request in one step.
+* The plan Subcommand::         Inspect a plan without running it.
+* The chat Subcommand::         Multi-turn interactive session.
+* The doctor Subcommand::       Check your environment before running.
+* The models Subcommand::       See what models are downloaded.
+* The config Subcommand::       Show the resolved configuration.
+* The version Subcommand::      Show version information.
+* Progress Output::             Understanding the spinner and token counter.
+* Reading a Plan::              What the plan display means.
+* Reading Step Results::        What a step outcome looks like.
+* Verbose and JSON Output::     Getting more (or less) detail.
+* Global Options::              --no-progress, --verbose.
+* Environment Variables::       The variables that control behaviour.
+* Backwards Compatibility::     Old invocation style still works.
+@end menu
+
+
+@node Overview
+@section Overview
+@cindex agent loop
+
+When you run Codebud with a natural-language request, it goes through
+four stages:
+
+@enumerate
+@item
+@strong{Plan} --- The LLM reads your request and the list of available
+tools.  It produces a JSON plan: an ordered list of steps, each
+specifying a tool name, a description, and the arguments to pass to
+that tool.
+
+@item
+@strong{Validate} --- The safety engine inspects every step in the plan.
+Steps that would run commands not listed in the safety policy are
+rejected before anything executes.
+
+@item
+@strong{Execute} --- The executor runs each step in order, collecting
+the output (standard output, standard error, return code, or file
+contents).
+
+@item
+@strong{Remember} --- The memory store records what happened so that
+future requests in the same session can reference it.
+@end enumerate
+
+The @command{run} subcommand performs all four stages automatically.
+The @command{plan} subcommand stops after stage 2 so you can inspect
+the plan before committing to execution.  The @command{chat} subcommand
+repeats all four stages across multiple turns using a single persistent
+agent instance.
+
+@strong{Note on timing:} On CPU-only hardware (for example, an Intel
+i7-8550U laptop), the planning stage takes approximately 4--6 minutes
+for the recommended 3B model.  This is normal.  Codebud shows a live
+progress indicator so you can see that it is working.
+(@pxref{Progress Output}).
+
+
+@node Quick Start
+@section Quick Start
+@cindex quick start
+
+Before running Codebud, make sure the Ollama server is running and the
+model is downloaded.  If you are unsure, run:
+
+@example
+codebud doctor
+@end example
+
+If all checks pass, send your first request:
+
+@example
+OLLAMA_MODEL=qwen2.5-coder:3b-instruct-q4_K_M \
+    codebud run "list the Python files in the current directory"
+@end example
+
+You will see a spinner while the model thinks, then a numbered plan, then
+the results of each step.  That is all there is to a basic run.
+
+To avoid typing the model name every time, export it in your shell:
+
+@example
+export OLLAMA_MODEL=qwen2.5-coder:3b-instruct-q4_K_M
+codebud run "list the Python files in the current directory"
+@end example
+
+Add the @code{export} line to @file{~/.zshrc} (or @file{~/.bashrc}) to
+make it permanent.
+
+
+@node Subcommands
+@section Subcommands
+@cindex subcommands
+
+Codebud organises its functionality into subcommands:
+
+@multitable @columnfractions .25 .75
+@headitem Subcommand @tab Purpose
+@item @command{run} @tab Plan and auto-execute a request (most common)
+@item @command{plan} @tab Plan only --- inspect without executing
+@item @command{chat} @tab Interactive multi-turn session
+@item @command{doctor} @tab Check the environment
+@item @command{models} @tab List downloaded Ollama models
+@item @command{config} @tab Show resolved configuration
+@item @command{version} @tab Show version information
+@end multitable
+
+All subcommands accept @option{--help} for a quick reminder:
+
+@example
+codebud run --help
+@end example
+
+
+@node The run Subcommand
+@section The @command{run} Subcommand
+@cindex run subcommand
+@cindex executing a plan
+
+@command{run} is the main way to use Codebud.  It sends your request to
+the LLM, receives a plan, and executes every step automatically.
+
+@example
+codebud run "@var{your request}"
+@end example
+
+Example:
+
+@example
+codebud run "create a file called hello.py that prints Hello, world"
+@end example
+
+Codebud will:
+
+@enumerate
+@item
+Show a live spinner while the model generates the plan.
+@item
+Print a numbered plan summary.
+@item
+Execute each step in sequence, printing a one-line outcome.
+@end enumerate
+
+If any step fails, Codebud stops, prints the error, and suggests a fix.
+
+
+@node The plan Subcommand
+@section The @command{plan} Subcommand
+@cindex plan subcommand
+@cindex inspecting a plan
+
+@command{plan} generates a plan and prints it without executing anything.
+Use it to check what Codebud @emph{intends} to do before letting it act.
+
+@example
+codebud plan "@var{your request}"
+@end example
+
+Example:
+
+@example
+codebud plan "delete all .pyc files"
+@end example
+
+To see the raw JSON instead of the formatted display:
+
+@example
+codebud plan --json "delete all .pyc files"
+@end example
+
+@noindent
+The JSON format is exactly what the executor receives.  Each step has
+the fields @code{id}, @code{description}, @code{tool}, and @code{args}.
+
+
+@node The chat Subcommand
+@section The @command{chat} Subcommand
+@cindex chat subcommand
+@cindex interactive session
+@cindex multi-turn
+
+@command{chat} opens an interactive session.  Each request you type
+is planned and executed, and the memory store accumulates the history
+across turns so Codebud can refer to what it did earlier in the same
+session.
+
+@example
+codebud chat
+@end example
+
+After each plan is shown, @command{chat} walks you through every step
+one at a time.  For each step you can press:
+
+@table @kbd
+@item y @key{RET}
+Execute this step.
+@item @key{RET} (or @kbd{n})
+Skip this step without executing.
+@item a @key{RET}
+Execute this step and all remaining steps automatically.
+@item q @key{RET}
+Abort the current plan and return to the prompt.
+@end table
+
+To end the session, type @samp{quit} or press @kbd{Ctrl-D}.
+
+@strong{Why use chat instead of run?}  When you are working through a
+multi-step task interactively --- for example, exploring a codebase,
+then editing a file, then running the tests --- @command{chat} lets
+each turn build on the previous one.  Memory from earlier turns helps
+the planner make better decisions.
+
+
+@node The doctor Subcommand
+@section The @command{doctor} Subcommand
+@cindex doctor subcommand
+@cindex environment check
+
+@command{doctor} checks your environment and tells you what is wrong
+before you try to run an agent call.  Run it any time things are not
+working.
+
+@example
+codebud doctor
+@end example
+
+It checks:
+
+@enumerate
+@item Python version (3.10 or later required)
+@item @code{agent} package importable (editable install present)
+@item @env{OLLAMA_MODEL} environment variable is set
+@item Ollama server is reachable on @code{http://localhost:11434}
+@item The selected model has been pulled
+@item @file{config/harmless_commands.json} and
+      @file{config/powerful_commands.json} are valid JSON
+@item Enough free disk space near @file{~/.ollama/models/}
+@item Enough free RAM for the selected model
+@end enumerate
+
+Each failed check prints a one-line fix.  Example output when
+@env{OLLAMA_MODEL} is not set:
+
+@example
+  [FAIL] OLLAMA_MODEL is not set
+         -> Run: export OLLAMA_MODEL=qwen2.5-coder:3b-instruct-q4_K_M
+@end example
+
+@strong{Run @command{doctor} first} whenever you see a
+@code{plan_error} or a connection failure.  It saves time.
+
+
+@node The models Subcommand
+@section The @command{models} Subcommand
+@cindex models subcommand
+
+@command{models} lists all Ollama models that are currently downloaded
+and marks which one is selected by @env{OLLAMA_MODEL}.
+
+@example
+codebud models
+@end example
+
+Example output:
+
+@example
+NAME                                       SIZE  SELECTED
+  qwen2.5-coder:3b-instruct-q4_K_M        1.8G  <-- active
+  qwen2.5-coder:7b-instruct-q4_K_M        4.7G
+@end example
+
+To switch models, change @env{OLLAMA_MODEL} (@pxref{Selecting a Model
+in Codebud}).
+
+
+@node The config Subcommand
+@section The @command{config} Subcommand
+@cindex config subcommand
+@cindex resolved configuration
+
+@command{config} prints the resolved value of every environment variable
+Codebud reads, including the defaults it falls back to when a variable is
+not set.
+
+@example
+codebud config
+@end example
+
+Example output:
+
+@example
+Codebud resolved configuration:
+  OLLAMA_MODEL       = qwen2.5-coder:3b-instruct-q4_K_M
+  OLLAMA_BASE_URL    = http://localhost:11434
+  EMBED_MODEL        = qwen2.5-coder:3b-instruct-q4_K_M
+  OPENAI_API_KEY     = (not set)
+  WEB_SEARCH_ENABLED = 0
+@end example
+
+Use this to confirm that your exported variables are actually being
+picked up by the shell.
+
+
+@node The version Subcommand
+@section The @command{version} Subcommand
+@cindex version subcommand
+
+@command{version} shows the Codebud version, the running Ollama server
+version, the active model, and the Python version.
+
+@example
+codebud version
+@end example
+
+Example output:
+
+@example
+codebud  0.1.0
+ollama   0.17.0
+model    qwen2.5-coder:3b-instruct-q4_K_M
+python   3.14.4
+@end example
+
+Include this output when reporting bugs.
+
+
+@node Progress Output
+@section Progress Output
+@cindex progress indicator
+@cindex spinner
+@cindex prefill phase
+@cindex token rate
+
+When Codebud sends a request to the model, it displays a live progress
+indicator in the terminal.  There are two phases:
+
+@table @strong
+@item Prefill phase (the slow part)
+The model is processing your input prompt.  No output has arrived yet.
+The display shows a spinning character and an elapsed-time counter:
+
+@example
+| Thinking... 47s (prefill)
+@end example
+
+On a CPU-only laptop, prefill for the 3B model with a typical planning
+prompt takes 200--240 seconds.  @emph{This is normal.}  The model is not
+frozen.
+
+@item Generation phase
+The model starts producing tokens.  The display switches to a token
+counter and speed estimate:
+
+@example
+/ Generating... tokens: 42 | 1.1 t/s | 289s elapsed
+@end example
+@end table
+
+When the model finishes, a summary line replaces the spinner:
+
+@example
+prefill: 231s | gen: 58s | total: 289s | tokens: 67 | 1.1 t/s
+@end example
+
+@noindent
+The progress indicator is written to standard error, so it does not
+interfere with piped output.  To suppress it entirely, pass
+@option{--no-progress} or pipe stdout to another program (the indicator
+is automatically disabled when stdout is not a terminal).
+
+
+@node Reading a Plan
+@section Reading a Plan
+@cindex plan display
+@cindex reading a plan
+
+After the model finishes, Codebud prints a numbered plan summary.
+Example:
+
+@example
+Plan (3 steps):
+  [1] file_read          read README.md
+  [2] command            run pytest -q
+  [3] file_write         write test-summary.md
+@end example
+
+Each line shows the step number, the tool that will be used, and a
+human-readable description.  The tool names correspond to the built-in
+tools described in @ref{Tools Reference}.
+
+If the model could not produce a valid plan, you will see:
+
+@example
+Plan error: LLM returned invalid JSON
+  What happened: The model's output could not be parsed as JSON.
+  How to fix:    Switch to a larger model for more reliable JSON.
+
+Tip: run `codebud doctor` to check your environment.
+@end example
+
+The inline hint mirrors the @ref{Troubleshooting} chapter.
+
+
+@node Reading Step Results
+@section Reading Step Results
+@cindex step results
+@cindex execution output
+
+After each step executes, Codebud prints a one-line outcome:
+
+@example
+  -> ok, 12 lines stdout
+@end example
+
+Or, if the step failed:
+
+@example
+  -> exit 1, stderr: pytest: no tests ran
+@end example
+
+Pass @option{--verbose} (or @option{-v}) to see the full standard output
+of every step instead of the one-liner.
+
+
+@node Verbose and JSON Output
+@section Verbose and JSON Output
+@cindex verbose output
+@cindex JSON output
+
+@table @option
+@item --verbose / -v
+Show the full stdout of each step rather than a one-line summary.
+Useful for debugging, or when a step produces output you want to read.
+
+@item --no-progress
+Suppress the spinner entirely.  Useful when running Codebud from a
+script or when redirecting output.
+
+@item codebud plan --json "@var{request}"
+Print the raw JSON plan instead of the formatted display.  Useful for
+piping into other tools or for inspecting the exact @code{args} the
+planner chose.
+@end table
+
+
+@node Global Options
+@section Global Options
+@cindex global options
+
+The following options can be placed before the subcommand name:
+
+@example
+codebud [--no-progress] [--verbose] @var{subcommand} ...
+@end example
+
+@table @option
+@item --no-progress
+Disable the live spinner and timing summary.  The agent still runs;
+only the progress display is suppressed.
+
+@item --verbose / -v
+Print full step output instead of one-line summaries.  In
+@command{chat} mode this applies to all steps in the session.
+
+@item --help / -h
+Print a usage summary and exit.
+@end table
+
+
+@node Environment Variables
+@section Environment Variables
+@cindex environment variables
+
+All Codebud behaviour is controlled through environment variables.
+There are no configuration files to edit.
+
+@table @env
+@item OLLAMA_MODEL
+@strong{Required.}  The model name exactly as it appears in
+@command{ollama list} (and @command{codebud models}).  Example:
+@code{qwen2.5-coder:3b-instruct-q4_K_M}.
+
+@item OLLAMA_BASE_URL
+The base URL of the Ollama REST API.  Default:
+@code{http://localhost:11434}.  Change this only if Ollama is running
+on a different machine or port.
+
+@item EMBED_MODEL
+The model to use for generating embeddings (used by the memory and
+search tools).  Defaults to the value of @env{OLLAMA_MODEL}.
+
+@item OPENAI_API_KEY
+When set, Codebud falls back to the OpenAI API if Ollama is not
+reachable.  The model used is @code{gpt-3.5-turbo} unless overridden
+by @env{OPENAI_MODEL}.
+
+@item OPENAI_MODEL
+The OpenAI model to use when @env{OPENAI_API_KEY} is set.
+Default: @code{gpt-3.5-turbo}.
+
+@item WEB_SEARCH_ENABLED
+Set to @code{1} to enable outbound DuckDuckGo web searches.
+Default: @code{0} (disabled).  When disabled, the @code{web_search}
+tool reports itself as unavailable to the planner.
+@end table
+
+The @command{config} subcommand prints the resolved values of all
+these variables (@pxref{The config Subcommand}).
+
+
+@node Backwards Compatibility
+@section Backwards Compatibility
+@cindex backwards compatibility
+
+Before subcommands were introduced, Codebud was invoked as:
+
+@example
+python run_agent.py "your request"
+@end example
+
+Both the old style and the new subcommand style still work:
+
+@example
+codebud "your request"          @r{(maps to @command{run})}
+codebud run "your request"      @r{(equivalent)}
+python run_agent.py "your request"  @r{(still works)}
+@end example
+
+The @option{-i} / @option{--interactive} flag from the old interface is
+replaced by the @command{chat} subcommand, which provides the same
+step-by-step approval flow with a more natural REPL interface.
