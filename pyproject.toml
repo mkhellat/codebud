@@ -1,38 +1,88 @@
 [project]
 name = "codebud"
 version = "1.0.0"
-description = "A Cursor-style local coding agent with OpenClaw integration."
+description = "A Cursor-style local coding agent using Ollama — no API key required."
+readme = "README.md"
+license = { text = "GPL-3.0-or-later" }
 authors = [
-    { name = "Behzad" }
+    { name = "Mohammadreza Khellat", email = "mkhellat@beavernets.com" },
+]
+keywords = ["llm", "coding-agent", "ollama", "ai", "automation", "local-ai"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Environment :: Console",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: GNU General Public License v3 or later (GPLv3+)",
+    "Operating System :: POSIX :: Linux",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Software Development :: Code Generators",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
 ]
 requires-python = ">=3.10"
 dependencies = [
-    "openai",
-    "requests",
-    "tiktoken",
+    "openai>=1.0",
+    "requests>=2.28",
+    "tiktoken>=0.5",
 ]
 
 [project.optional-dependencies]
 dev = [
-    "pytest",
-    "ruff",
+    "pytest>=8.0",
+    "pytest-cov>=4.0",
+    "ruff>=0.3",
+    "build>=1.0",
 ]
 
 [project.scripts]
 codebud = "run_agent:main"
 
-[tool.setuptools.packages.find]
-include = ["agent*"]
+[project.urls]
+Repository   = "https://github.com/mkhellat/codebud"
+Documentation = "https://github.com/mkhellat/codebud/tree/main/docs"
+"Bug Tracker" = "https://github.com/mkhellat/codebud/issues"
 
 [tool.setuptools]
 py-modules = ["run_agent"]
 
+[tool.setuptools.packages.find]
+include = ["agent*"]
+
+[tool.setuptools.package-data]
+"*" = ["config/*.json", "openclaw/SKILL.md"]
+
 [build-system]
-requires = ["setuptools"]
+requires = ["setuptools>=68", "wheel"]
 build-backend = "setuptools.build_meta"
+
+# ─── pytest ───────────────────────────────────────────────────────────────────
 
 [tool.pytest.ini_options]
 pythonpath = ["."]
+testpaths  = ["tests"]
+addopts    = "-q"
+
+# ─── ruff ────────────────────────────────────────────────────────────────────
 
 [tool.ruff]
-line-length = 100
+line-length    = 100
+target-version = "py310"
+
+[tool.ruff.lint]
+select = [
+    "E",   # pycodestyle errors
+    "W",   # pycodestyle warnings
+    "F",   # pyflakes
+    "I",   # isort
+    "UP",  # pyupgrade
+    "B",   # flake8-bugbear
+]
+ignore = [
+    "E501",  # line too long — handled by ruff format
+]
+
+[tool.ruff.lint.isort]
+known-first-party = ["agent", "openclaw"]
