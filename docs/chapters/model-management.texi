@@ -11,9 +11,9 @@ machine without re-downloading.
 
 @menu
 * What is Ollama::              The local LLM server Codebud talks to.
-* System Requirements::         RAM, CPU, and disk you will need.
+* Model Hardware Requirements:: RAM, CPU, and disk you will need.
 * Choosing a Model::            Which Qwen2.5-Coder variant to use.
-* Installing Ollama::           Getting the server running.
+* Ollama Server Setup::         Getting the server running.
 * Pulling a Model::             Downloading a model for the first time.
 * Listing Models::              Seeing what you have installed.
 * Where Models Are Stored::     The on-disk layout.
@@ -42,8 +42,8 @@ You install it once, pull whichever models you want, and point Codebud at
 them with a single environment variable.
 
 
-@node System Requirements
-@section System Requirements
+@node Model Hardware Requirements
+@section Hardware Requirements
 @cindex system requirements, models
 @cindex RAM requirements
 
@@ -51,21 +51,29 @@ The minimum resources depend on the model you choose.  The table below lists
 the practical requirements for the models Codebud recommends.
 
 @multitable @columnfractions .35 .15 .20 .30
-@headitem Model name @tab Disk @tab RAM needed @tab CPU speed (i7-8550U)
-@item @code{qwen2.5-coder:1.5b} @tab ~1 GB @tab ~2 GB @tab ~12 t/s
-@item @code{qwen2.5-coder:3b-instruct-q4_K_M} @tab ~1.8 GB @tab ~4 GB @tab ~5 t/s
-@item @code{qwen2.5-coder:7b-instruct-q4_K_M} @tab ~4.7 GB @tab ~8 GB @tab ~1 t/s
-@item @code{qwen2.5-coder:14b-instruct-q4_K_M} @tab ~9 GB @tab ~16 GB @tab <1 t/s
+@headitem Model name @tab Disk @tab RAM needed @tab Gen. speed (i7-8550U)
+@item @code{qwen2.5-coder:1.5b} @tab ~1 GB @tab ~2 GB @tab ~8 t/s
+@item @code{qwen2.5-coder:3b-instruct-q4_K_M} @tab ~1.8 GB @tab ~4 GB @tab ~1.1 t/s
+@item @code{qwen2.5-coder:7b-instruct-q4_K_M} @tab ~4.7 GB @tab ~8 GB @tab <1 t/s
+@item @code{qwen2.5-coder:14b-instruct-q4_K_M} @tab ~9 GB @tab ~16 GB @tab <0.5 t/s
 @end multitable
 
 @noindent
-@emph{t/s} = tokens per second.  Speeds are approximate for a 2018 laptop
-CPU running without a GPU.  If you have an NVIDIA GPU, Ollama uses it
-automatically and speeds improve by 10--50x.
+@emph{t/s} = output tokens per second (generation phase).  Prefill (processing
+the input prompt) is a separate, slower phase on CPU-only hardware: the 3B
+model takes approximately 230 seconds to prefill a 360-token planning prompt
+on an i7-8550U, plus ~58 seconds of generation, for a total of ~5 minutes
+per agent call.  The 7B model is impractically slow on this hardware (the
+same prompt exceeds 5 minutes of prefill alone).
 
-@strong{Recommendation for this machine (i7-8550U, 16 GB RAM):} use
-@code{qwen2.5-coder:3b-instruct-q4_K_M}.  It fits comfortably in RAM,
-responds in a few seconds per call, and produces JSON plans reliably.
+If you have an NVIDIA GPU, Ollama uses it automatically and speeds improve
+by 10--50x, making even the 7B model interactive.
+
+@strong{Recommendation for CPU-only laptops (e.g. i7-8550U, 16 GB RAM):}
+use @code{qwen2.5-coder:3b-instruct-q4_K_M}.  It fits in RAM, produces
+valid JSON plans reliably, and completes a round-trip in under 6 minutes.
+The 1.5B model is faster but less accurate at following structured JSON
+instructions; switch to it only if 6 minutes is unacceptably slow.
 
 
 @node Choosing a Model
@@ -102,22 +110,35 @@ pull a larger model later and switch with one environment variable change
 (@pxref{Selecting a Model in Codebud}).
 
 
-@node Installing Ollama
-@section Installing Ollama
+@node Ollama Server Setup
+@section Installing and Starting Ollama
 @cindex installing Ollama
 @cindex ollama serve
 
 @subsection Arch Linux
 
-Ollama is not in the official Arch repositories.  Use the official installer
-script:
+@strong{Option A --- AUR (recommended):}
+
+If you have an AUR helper, install the @code{ollama} package so that
+upgrades go through pacman:
+
+@example
+yay -S ollama
+# or: paru -S ollama
+@end example
+
+@strong{Option B --- official installer script:}
+
+If you do not use the AUR, the official script works on any distribution:
 
 @example
 curl -fsSL https://ollama.com/install.sh | sh
 @end example
 
 This installs the @command{ollama} binary to @file{/usr/local/bin/ollama} and
-optionally installs a systemd service unit.
+optionally installs a systemd service unit.  On Arch, the AUR package is
+preferred because it integrates with pacman and handles the service unit
+without manual steps.
 
 @subsection Starting the server
 
