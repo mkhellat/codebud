@@ -108,22 +108,22 @@ class PatchTool:
 
         # Apply hunks
         for line in lines:
-            if line.startswith("@@"):
-                # Hunk header — skip
+            # Skip diff file headers and hunk markers
+            if line.startswith("---") or line.startswith("+++") or line.startswith("@@"):
                 continue
 
             if line.startswith("-"):
-                # Remove line
+                # Remove line — advance source pointer, do not emit
                 j += 1
                 continue
 
             if line.startswith("+"):
-                # Add line
+                # Add line — emit without the leading '+'
                 patched_lines.append(line[1:] + "\n")
                 continue
 
             if line.startswith(" "):
-                # Context line — keep original
+                # Context line — copy from original
                 patched_lines.append(original_lines[j])
                 j += 1
                 continue
