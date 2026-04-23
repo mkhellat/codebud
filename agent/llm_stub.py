@@ -33,7 +33,7 @@ logger = logging.getLogger(__name__)
 _OLLAMA_BASE = os.environ.get("OLLAMA_BASE_URL", "http://localhost:11434")
 
 
-def call_llm(prompt: str, timeout: float = 120.0) -> str:
+def call_llm(prompt: str, timeout: float = 600.0) -> str:
     """Send ``prompt`` to the configured LLM and return the raw text output.
 
     Priority order:
@@ -42,8 +42,10 @@ def call_llm(prompt: str, timeout: float = 120.0) -> str:
     2. OpenAI API if ``OPENAI_API_KEY`` is present.
     3. Otherwise return an empty string and log a warning.
 
-    ``timeout`` applies to the HTTP request.  120 s gives CPU inference
-    (7-B models) time to finish without hanging indefinitely.
+    ``timeout`` is the maximum total wall-clock seconds to wait.  On CPU-only
+    hardware prefill alone can take several minutes for a 300-token prompt, so
+    the default is generous.  The Ollama call uses streaming internally so the
+    HTTP read timeout never fires mid-generation.
     """
 
     ollama_model = os.environ.get("OLLAMA_MODEL")
@@ -85,18 +87,42 @@ def _ollama_available() -> bool:
 
 
 def _call_ollama(model: str, prompt: str, timeout: float) -> str:
-    """POST to the Ollama generate endpoint and return the concatenated text.
+    """Stream from the Ollama generate endpoint and return the full text.
 
-    Ollama streams one JSON object per line; we join all ``response`` fields.
+    Using stream=True means the HTTP connection receives a token at a time,
+    so the read timeout never fires during the long prefill phase on CPU-only
+    hardware.  We use a generous connect timeout (10 s) and set the read
+    timeout to the caller-supplied total ``timeout``.
     """
+    import json as _json
+    import time as _time
+
+    deadline = _time.monotonic() + timeout
+    chunks = []
     try:
         r = requests.post(
             f"{_OLLAMA_BASE}/api/generate",
-            json={"model": model, "prompt": prompt, "stream": False},
-            timeout=timeout,
+            json={
+                "model": model,
+                "prompt": prompt,
+                "stream": True,
+                "options": {"temperature": 0},
+            },
+            stream=True,
+            timeout=(10, timeout),
         )
         r.raise_for_status()
-        return r.json().get("response", "")
+        for line in r.iter_lines():
+            if _time.monotonic() > deadline:
+                logger.warning("Ollama call exceeded total timeout of %ss", timeout)
+                break
+            if not line:
+                continue
+            chunk = _json.loads(line)
+            chunks.append(chunk.get("response", ""))
+            if chunk.get("done"):
+                break
+        return "".join(chunks)
     except Exception as exc:
         logger.warning("Ollama call failed: %s", exc)
         return ""

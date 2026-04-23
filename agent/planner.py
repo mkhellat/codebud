@@ -75,6 +75,9 @@ class LLMPlanner:
                 "error": "LLM returned empty output"
             }
 
+        # Strip markdown code fences that some models add around JSON output
+        llm_output = self._strip_code_fence(llm_output)
+
         # Parse JSON
         try:
             plan_json = json.loads(llm_output)
@@ -187,3 +190,23 @@ Remember:
                 return False
 
         return True
+
+    # ------------------------------------------------------------------
+    # Helpers
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _strip_code_fence(text: str) -> str:
+        """Remove markdown code fences from LLM output.
+
+        Models often wrap JSON in ```json ... ``` or ``` ... ```.
+        This strips the fence lines and returns only the inner content.
+        """
+        text = text.strip()
+        if text.startswith("```"):
+            # Drop the opening fence line (e.g. ```json or ```)
+            text = text[text.index("\n") + 1:] if "\n" in text else text[3:]
+            # Drop the closing fence if present
+            if text.rstrip().endswith("```"):
+                text = text.rstrip()[:-3]
+        return text.strip()
