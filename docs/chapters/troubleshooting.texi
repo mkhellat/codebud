@@ -2,7 +2,260 @@
 @chapter Troubleshooting
 @cindex troubleshooting
 
-@strong{This chapter is a stub and will be expanded in a future session.}
+This chapter covers the most common failures you are likely to encounter,
+their root causes, and how to fix them.
 
-This chapter will cover common failures: model timeouts, JSON parse errors,
-safety rejections, sandbox permission errors, and OpenAI fallback issues.
+@menu
+* Agent Returns plan_error::        The planner could not produce a valid plan.
+* Model Timeout::                   Inference takes too long and the call fails.
+* HTTP 500 from Ollama::            The Ollama runner crashes mid-inference.
+* Invalid JSON from Planner::       The model wraps output in code fences.
+* Safety Rejection::                A plan step is blocked by the safety engine.
+* Embedding Dimension Mismatch::    Old stub vectors mix with new real vectors.
+* Web Search Returns No Results::   The DuckDuckGo scraper finds nothing.
+* Pytest Cannot Import agent::      The package is not installed in the venv.
+@end menu
+
+
+@node Agent Returns plan_error
+@section Agent Returns @code{plan_error}
+@cindex plan_error
+
+The agent prints something like:
+
+@example
+@{"status": "plan_error", "error": "LLM returned empty output"@}
+@end example
+
+@table @strong
+@item Cause: no LLM backend configured
+Neither @env{OLLAMA_MODEL} nor @env{OPENAI_API_KEY} is set.
+
+@emph{Fix:} set @env{OLLAMA_MODEL}:
+@example
+export OLLAMA_MODEL=qwen2.5-coder:3b-instruct-q4_K_M
+@end example
+
+@item Cause: Ollama server is not running
+@env{OLLAMA_MODEL} is set but @code{curl http://localhost:11434/api/tags}
+returns @samp{Connection refused}.
+
+@emph{Fix:} start the server:
+@example
+ollama serve
+# or: sudo systemctl start ollama
+@end example
+
+@item Cause: model not pulled
+@env{OLLAMA_MODEL} names a model that is not installed.
+
+@emph{Fix:} pull it:
+@example
+ollama pull qwen2.5-coder:3b-instruct-q4_K_M
+@end example
+
+@item Cause: request timed out
+The model is too slow for the hardware.  See @ref{Model Timeout}.
+@end table
+
+
+@node Model Timeout
+@section Model Timeout
+@cindex timeout, model inference
+@cindex CPU-only inference speed
+
+On CPU-only hardware, inference is much slower than on a machine with a GPU.
+The table below shows measured timings on an Intel i7-8550U (2018 laptop CPU)
+with the 3B model:
+
+@multitable @columnfractions .30 .35 .35
+@headitem Phase @tab Time @tab Notes
+@item Prefill (361 tokens) @tab ~231 s @tab Processing the input prompt
+@item Generation (67 tokens) @tab ~58 s @tab Producing the output JSON
+@item Total (first run) @tab ~290 s @tab ~5 minutes end-to-end
+@end multitable
+
+@noindent
+The first call after starting the server is the slowest because the model
+loads from disk into RAM.  Subsequent calls skip the load step.
+
+@strong{Do not use @code{stream=False}} when calling the Ollama API on slow
+hardware.  With streaming disabled, the HTTP connection sits silent for the
+entire prefill phase before the first byte arrives, causing a read timeout.
+Codebud uses @code{stream=True} internally to avoid this.
+
+@strong{If timeouts persist:}
+
+@itemize
+@item Switch to a smaller model (@pxref{Choosing a Model}): the 1.5B model
+is 3--4x faster than the 3B on the same CPU.
+@item Check that no other process is competing for RAM --- another model
+loaded by Ollama will slow inference significantly.
+@item On Arch Linux, set the CPU governor to @samp{performance} mode:
+@example
+sudo cpupower frequency-set -g performance
+@end example
+@item Reduce context pressure by lowering @code{num_predict} (maximum
+output tokens) in the Ollama options.
+@end itemize
+
+
+@node HTTP 500 from Ollama
+@section HTTP 500 from Ollama
+@cindex HTTP 500
+@cindex Ollama runner crash
+
+If Ollama returns HTTP 500 and the server log (@file{/tmp/ollama.log} or
+@command{journalctl -u ollama}) shows the runner process exiting, the most
+likely cause is the Linux OOM (out-of-memory) killer terminating the runner
+mid-inference.
+
+@strong{Diagnosis:}
+
+@example
+dmesg | grep -i "killed process\|oom"
+free -h
+@end example
+
+@strong{Fixes:}
+
+@itemize
+@item Close other large applications to free RAM.
+@item Switch to a smaller model that fits more comfortably in available RAM.
+@item Reduce the Ollama KV-cache size (set @code{num_ctx} to 2048 instead
+of 4096 in the @code{options} block of the API request).
+@item Do not load two models simultaneously --- Ollama keeps a model in RAM
+until its keep-alive timeout expires (default 5 minutes).  Run
+@command{ollama list --running} to see what is loaded.
+@end itemize
+
+
+@node Invalid JSON from Planner
+@section Invalid JSON from Planner
+@cindex JSON parsing, code fences
+@cindex code fences, markdown
+
+Some models wrap their JSON output in markdown code fences:
+
+@example
+```json
+@{"status": "ok", "plan": [...]@}
+```
+@end example
+
+Codebud's planner strips these fences automatically before parsing.  If
+you see @code{"error": "LLM returned invalid JSON"} despite the model
+returning something, check that @code{LLMPlanner._strip_code_fence} is
+present in @file{agent/planner.py} --- it may have been removed by a
+merge or revert.
+
+If the model returns something other than JSON entirely (reasoning text,
+an apology, etc.), the prompt needs tuning.  The planner prompt instructs
+the model to return JSON only; some models ignore this for complex
+requests.  Simplify the request or switch to a larger model.
+
+
+@node Safety Rejection
+@section Safety Rejection
+@cindex safety engine, rejection
+@cindex plan step rejected
+
+The planner may return:
+
+@example
+@{"status": "plan_error", "error": "LLM returned malformed plan"@}
+@end example
+
+This can mean a plan step was rejected by the @code{SafetyEngine}.
+The engine blocks any @code{command} step whose @code{cmd} does not
+start with a prefix listed in @file{config/harmless_commands.json} or
+@file{config/powerful_commands.json}.
+
+@strong{To diagnose:}
+
+@example
+python -c "
+from agent.core import AgentCore
+import json
+a = AgentCore()
+plan = a.planner.generate_plan('your request here')
+print(json.dumps(plan, indent=2))
+"
+@end example
+
+If the plan contains a @code{command} step with an unexpected @code{cmd},
+either:
+
+@itemize
+@item Add the command prefix to @file{config/harmless_commands.json} if it
+is genuinely safe.
+@item Rephrase the request so the planner uses a different tool (e.g.
+@code{file_read} instead of @code{cat}).
+@end itemize
+
+
+@node Embedding Dimension Mismatch
+@section Embedding Dimension Mismatch
+@cindex embedding dimension mismatch
+
+If you used Codebud before the real Ollama embedding backend was wired up,
+@file{data/embeddings/index.json} may contain 16-dimensional stub vectors.
+New embeddings are 2048-dimensional.  Cosine similarity between entries of
+different sizes returns 0.0, making search results incorrect.
+
+@strong{Fix:} clear the index and re-embed your content:
+
+@example
+echo "[]" > data/embeddings/index.json
+@end example
+
+Then re-run whatever pipeline populated the index.
+
+
+@node Web Search Returns No Results
+@section Web Search Returns No Results
+@cindex web search, no results
+@cindex DuckDuckGo
+
+If @code{WEB_SEARCH_ENABLED=1} is set but the tool returns an empty list,
+DuckDuckGo Lite's HTML structure may have changed, breaking the regex
+scraper.
+
+@strong{To diagnose:}
+
+@example
+python -c "
+import requests
+r = requests.post('https://lite.duckduckgo.com/lite/',
+    data=@{'q': 'test'@},
+    headers=@{'User-Agent': 'Mozilla/5.0'@}, timeout=10)
+print(r.text[:2000])
+"
+@end example
+
+Look for @samp{result-link} and @samp{result-snippet} class names.  If
+they have changed, update the regex patterns in
+@file{agent/tools/web_search.py:_ddg_search}.
+
+
+@node Pytest Cannot Import agent
+@section Pytest Cannot Import @code{agent}
+@cindex pytest, ImportError
+@cindex editable install
+
+If @command{pytest} reports:
+
+@example
+ModuleNotFoundError: No module named 'agent'
+@end example
+
+The package is not installed in the active virtual environment.  Fix:
+
+@example
+source .venv/bin/activate
+pip install -e ".[dev]"
+pytest -q
+@end example
+
+Make sure you are running @command{pytest} from the repository root and that
+the venv is active (your prompt shows @samp{(.venv)}).
