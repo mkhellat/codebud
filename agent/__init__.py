@@ -16,4 +16,3 @@ Cursor‑style coding agent:
 from .core import AgentCore
 
 __all__ = ["AgentCore"]
-

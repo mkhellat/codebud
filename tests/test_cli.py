@@ -6,11 +6,7 @@ and error mapping.
 """
 
 import sys
-import types
-from io import StringIO
 from unittest.mock import MagicMock, patch
-
-import pytest
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -43,18 +39,21 @@ def _plan_error(msg="LLM returned empty output"):
 class TestDoctorChecks:
     def test_python_version_pass(self):
         from agent.cli.doctor import check_python_version
+
         passed, label, _ = check_python_version()
         assert passed
         assert "Python version" in label
 
     def test_agent_importable_pass(self):
         from agent.cli.doctor import check_agent_importable
+
         passed, label, _ = check_agent_importable()
         assert passed
         assert "importable" in label
 
     def test_ollama_model_not_set(self, monkeypatch):
         from agent.cli.doctor import check_ollama_model_set
+
         monkeypatch.delenv("OLLAMA_MODEL", raising=False)
         passed, label, hint = check_ollama_model_set()
         assert not passed
@@ -63,14 +62,16 @@ class TestDoctorChecks:
 
     def test_ollama_model_set(self, monkeypatch):
         from agent.cli.doctor import check_ollama_model_set
+
         monkeypatch.setenv("OLLAMA_MODEL", "qwen2.5-coder:3b")
         passed, label, _ = check_ollama_model_set()
         assert passed
         assert "qwen2.5-coder:3b" in label
 
     def test_ollama_reachable_pass(self, monkeypatch):
-        from agent.cli import doctor
         import requests
+
+        from agent.cli import doctor
 
         def fake_get(url, timeout):
             r = MagicMock()
@@ -82,8 +83,9 @@ class TestDoctorChecks:
         assert passed
 
     def test_ollama_reachable_fail_connection(self, monkeypatch):
-        from agent.cli import doctor
         import requests
+
+        from agent.cli import doctor
 
         def fake_get(url, timeout):
             raise requests.exceptions.ConnectionError("refused")
@@ -94,8 +96,9 @@ class TestDoctorChecks:
         assert "ollama serve" in hint or "systemctl" in hint
 
     def test_model_pulled_pass(self, monkeypatch):
-        from agent.cli import doctor
         import requests
+
+        from agent.cli import doctor
 
         monkeypatch.setenv("OLLAMA_MODEL", "qwen2.5-coder:3b")
 
@@ -110,8 +113,9 @@ class TestDoctorChecks:
         assert passed
 
     def test_model_pulled_fail(self, monkeypatch):
-        from agent.cli import doctor
         import requests
+
+        from agent.cli import doctor
 
         monkeypatch.setenv("OLLAMA_MODEL", "missing-model")
 
@@ -153,8 +157,9 @@ class TestDoctorChecks:
         assert "JSON" in label or "JSON" in hint
 
     def test_run_doctor_all_pass(self, monkeypatch, capsys):
-        from agent.cli import doctor
         import requests
+
+        from agent.cli import doctor
 
         monkeypatch.setenv("OLLAMA_MODEL", "qwen2.5-coder:3b")
 
@@ -205,6 +210,7 @@ class TestDisplay:
 class TestErrors:
     def test_known_error_connection_refused(self):
         from agent.cli.errors import explain
+
         result = explain("Connection refused to localhost:11434")
         assert result is not None
         explanation, fix = result
@@ -212,6 +218,7 @@ class TestErrors:
 
     def test_known_error_model_not_found(self):
         from agent.cli.errors import explain
+
         result = explain("model not found")
         assert result is not None
         _, fix = result
@@ -219,11 +226,13 @@ class TestErrors:
 
     def test_known_error_invalid_json(self):
         from agent.cli.errors import explain
+
         result = explain("LLM returned invalid JSON")
         assert result is not None
 
     def test_unknown_error_returns_none(self):
         from agent.cli.errors import explain
+
         result = explain("some completely unknown error xyz123")
         assert result is None
 
@@ -237,6 +246,7 @@ class TestSubcommandRouting:
     def _run_main(self, argv):
         """Run main() with the given argv list, capturing SystemExit."""
         import run_agent
+
         with patch.object(sys, "argv", ["codebud"] + argv):
             try:
                 run_agent.main()
@@ -247,6 +257,7 @@ class TestSubcommandRouting:
     def test_doctor_subcommand(self, monkeypatch):
         """doctor subcommand calls run_doctor."""
         from agent.cli import doctor
+
         called = {}
 
         def fake_doctor():
@@ -266,10 +277,10 @@ class TestSubcommandRouting:
 
     def test_run_subcommand_plan_error(self, monkeypatch):
         """run subcommand exits 1 on plan_error."""
-        from agent import core as agent_core
 
         class FakeAgent:
             executor = MagicMock()
+
             def handle_user_message(self, msg, on_chunk=None):
                 return _plan_error()
 
@@ -279,15 +290,18 @@ class TestSubcommandRouting:
 
     def test_backwards_compat_no_subcommand(self, monkeypatch):
         """Bare `codebud "msg"` maps to run."""
-        from agent import core as agent_core
 
         ran = {}
 
         class FakeAgent:
             executor = MagicMock()
-            executor.execute_plan = MagicMock(return_value={
-                "status": "ok", "results": {"step_0": {"stdout": "", "returncode": 0}}
-            })
+            executor.execute_plan = MagicMock(
+                return_value={
+                    "status": "ok",
+                    "results": {"step_0": {"stdout": "", "returncode": 0}},
+                }
+            )
+
             def handle_user_message(self, msg, on_chunk=None):
                 ran["msg"] = msg
                 return _good_plan()

@@ -18,12 +18,12 @@ The most important tools are:
 - EmbedTool / EmbeddingSearchTool: simple embedding + vector search.
 """
 
-from .file_io import FileWriteTool, FileReadTool
-from .patcher import PatchTool
 from .commands import CommandTool
-from .web_search import WebSearchTool
-from .embeddings import EmbedTool, EmbeddingSearchTool
+from .embeddings import EmbeddingSearchTool, EmbedTool
+from .file_io import FileReadTool, FileWriteTool
+from .patcher import PatchTool
 from .tool_registry import ToolRegistry
+from .web_search import WebSearchTool
 
 __all__ = [
     "FileWriteTool",
@@ -35,4 +35,3 @@ __all__ = [
     "EmbeddingSearchTool",
     "ToolRegistry",
 ]
-

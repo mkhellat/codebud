@@ -6,9 +6,8 @@ explanations and actionable fix hints. Mirrors the Troubleshooting chapter
 so the CLI surfaces what the docs already document.
 """
 
-from typing import Optional, Tuple
 
-_RULES: list[Tuple[str, str, str]] = [
+_RULES: list[tuple[str, str, str]] = [
     # (substring to match, explanation, fix command)
     (
         "Connection refused",
@@ -78,7 +77,7 @@ _RULES: list[Tuple[str, str, str]] = [
 ]
 
 
-def explain(error: str) -> Optional[Tuple[str, str]]:
+def explain(error: str) -> tuple[str, str] | None:
     """Return (explanation, fix_hint) for a known error, or None if unknown."""
     lower = error.lower()
     for fragment, explanation, fix in _RULES:
@@ -90,6 +89,7 @@ def explain(error: str) -> Optional[Tuple[str, str]]:
 def print_error(error: str, *, label: str = "Error") -> None:
     """Print a formatted error with an explanation and fix hint if known."""
     import sys
+
     print(f"\n{label}: {error}", file=sys.stderr)
     result = explain(error)
     if result:

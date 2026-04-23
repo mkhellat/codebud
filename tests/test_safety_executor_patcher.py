@@ -6,13 +6,10 @@ damage: the safety policy gate, the executor dispatch loop, and the
 file-patching tool.
 """
 
-import types
-import pytest
 
-from agent.safety import SafetyEngine
 from agent.executor import Executor
+from agent.safety import SafetyEngine
 from agent.tools.patcher import PatchTool
-
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -220,14 +217,7 @@ class TestPatchTool:
         target = tmp_path / "hello.txt"
         target.write_text("line1\nline2\n")
 
-        patch = (
-            "--- a/hello.txt\n"
-            "+++ b/hello.txt\n"
-            "@@ -1,2 +1,3 @@\n"
-            " line1\n"
-            " line2\n"
-            "+line3\n"
-        )
+        patch = "--- a/hello.txt\n+++ b/hello.txt\n@@ -1,2 +1,3 @@\n line1\n line2\n+line3\n"
         result = PatchTool().run({"patch": patch})
         assert result["returncode"] == 0
         assert target.read_text() == "line1\nline2\nline3\n"
@@ -237,26 +227,14 @@ class TestPatchTool:
         target = tmp_path / "hello.txt"
         target.write_text("keep\nremove\n")
 
-        patch = (
-            "--- a/hello.txt\n"
-            "+++ b/hello.txt\n"
-            "@@ -1,2 +1,1 @@\n"
-            " keep\n"
-            "-remove\n"
-        )
+        patch = "--- a/hello.txt\n+++ b/hello.txt\n@@ -1,2 +1,1 @@\n keep\n-remove\n"
         result = PatchTool().run({"patch": patch})
         assert result["returncode"] == 0
         assert target.read_text() == "keep\n"
 
     def test_file_not_found(self, tmp_path, monkeypatch):
         monkeypatch.chdir(tmp_path)
-        patch = (
-            "--- a/ghost.txt\n"
-            "+++ b/ghost.txt\n"
-            "@@ -1 +1 @@\n"
-            "-old\n"
-            "+new\n"
-        )
+        patch = "--- a/ghost.txt\n+++ b/ghost.txt\n@@ -1 +1 @@\n-old\n+new\n"
         result = PatchTool().run({"patch": patch})
         assert result["returncode"] == 1
         assert "ghost.txt" in result["stderr"]

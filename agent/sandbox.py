@@ -15,9 +15,9 @@ The sandbox does NOT:
 - interact with the LLM
 """
 
-import subprocess
 import shlex
-from typing import Dict, Any
+import subprocess
+from typing import Any
 
 
 class Sandbox:
@@ -38,7 +38,7 @@ class Sandbox:
     # Public API
     # ------------------------------------------------------------------
 
-    def run_command(self, cmd: str) -> Dict[str, Any]:
+    def run_command(self, cmd: str) -> dict[str, Any]:
         """
         Execute a shell command safely.
 
@@ -52,39 +52,28 @@ class Sandbox:
 
         # Basic safety guard
         if self._is_dangerous(cmd):
-            return {
-                "stdout": "",
-                "stderr": f"Blocked dangerous command: {cmd}",
-                "returncode": 1
-            }
+            return {"stdout": "", "stderr": f"Blocked dangerous command: {cmd}", "returncode": 1}
 
         try:
             process = subprocess.run(
-                shlex.split(cmd),
-                capture_output=True,
-                text=True,
-                timeout=self.timeout
+                shlex.split(cmd), capture_output=True, text=True, timeout=self.timeout
             )
 
             return {
                 "stdout": process.stdout,
                 "stderr": process.stderr,
-                "returncode": process.returncode
+                "returncode": process.returncode,
             }
 
         except subprocess.TimeoutExpired:
             return {
                 "stdout": "",
                 "stderr": f"Command timed out after {self.timeout} seconds",
-                "returncode": 1
+                "returncode": 1,
             }
 
         except Exception as e:
-            return {
-                "stdout": "",
-                "stderr": f"Sandbox error: {e}",
-                "returncode": 1
-            }
+            return {"stdout": "", "stderr": f"Sandbox error: {e}", "returncode": 1}
 
     # ------------------------------------------------------------------
     # Internal helpers

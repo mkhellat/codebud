@@ -7,14 +7,12 @@ Tests for LLMPlanner: prompt content, retry logic, and JSON parsing.
 import json
 from unittest.mock import MagicMock, patch
 
-import pytest
-
 from agent.planner import LLMPlanner
-
 
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
+
 
 def _make_registry(tool_names=None):
     """Minimal ToolRegistry substitute."""
@@ -58,6 +56,7 @@ def _good_plan(tool="command"):
 # ---------------------------------------------------------------------------
 # Prompt content tests
 # ---------------------------------------------------------------------------
+
 
 class TestPromptContent:
     def test_few_shot_examples_in_prompt(self):
@@ -112,6 +111,7 @@ class TestPromptContent:
 # Retry logic tests
 # ---------------------------------------------------------------------------
 
+
 class TestRetryLogic:
     def test_valid_json_first_attempt_no_retry(self):
         """If first call returns valid JSON, the second call is never made."""
@@ -134,7 +134,7 @@ class TestRetryLogic:
         planner = LLMPlanner(_make_registry(), _make_safety())
         responses = [
             "Sure! Here is my plan for you...",  # prose — invalid JSON
-            json.dumps(_good_plan()),             # valid JSON on retry
+            json.dumps(_good_plan()),  # valid JSON on retry
         ]
         call_count = [0]
 
@@ -210,6 +210,7 @@ class TestRetryLogic:
 # Validation edge cases
 # ---------------------------------------------------------------------------
 
+
 class TestValidation:
     def test_unknown_tool_returns_plan_error(self):
         """A plan that names a non-existent tool must fail validation."""
@@ -217,9 +218,7 @@ class TestValidation:
         planner = LLMPlanner(registry, _make_safety())
         bad_plan = {
             "status": "ok",
-            "plan": [
-                {"id": "step_0", "description": "x", "tool": "nonexistent", "args": {}}
-            ],
+            "plan": [{"id": "step_0", "description": "x", "tool": "nonexistent", "args": {}}],
         }
         with patch("agent.planner.call_llm", return_value=json.dumps(bad_plan)):
             result = planner.generate_plan("do something")
