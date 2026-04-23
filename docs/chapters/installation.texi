@@ -65,7 +65,8 @@ Required to clone the repository.
 @item curl, base-devel
 Used when building native extensions (some pip packages compile C code).
 @item nodejs, npm
-Required for the OpenClaw UI gateway (@pxref{Usage}).
+Required if you want to install or run the OpenClaw gateway CLI
+(@command{openclaw}).  Not needed to run Codebud on its own.
 @end table
 
 Verify the key tools are present:
@@ -151,9 +152,10 @@ agent/          Core agent (planner, executor, safety, tools, memory)
 config/         Safety policy JSON files
 data/           Embedding index and memory snapshots
 docs/           This manual (GNU Texinfo)
-openclaw/       OpenClaw skill wrapper
+openclaw/       OpenClaw SKILL.md (browser UI integration)
+Makefile        build targets including install-skill
 tests/          Pytest test suite
-run_agent.py    CLI entry point
+run_agent.py    CLI entry point (also exposed as the codebud binary)
 @end example
 
 
@@ -208,22 +210,45 @@ pytest -q
 
 All tests should pass.  No Ollama connection is needed for the tests.
 
+@subsection Check the environment
+
+Run the built-in health checker first.  It verifies Ollama is running,
+the model is pulled, and every config file parses cleanly:
+
+@example
+codebud doctor
+@end example
+
+Each check prints @samp{[PASS]} or @samp{[FAIL]} with a one-line fix command.
+Fix any failures before continuing.
+
 @subsection Smoke-test the agent
 
 Pull the recommended model if you have not already (@pxref{Pulling a Model}),
 then:
 
 @example
-OLLAMA_MODEL=qwen2.5-coder:3b-instruct-q4_K_M \
-    python run_agent.py "list files in the current directory"
+export OLLAMA_MODEL=qwen2.5-coder:3b-instruct-q4_K_M
+codebud run "list files in the current directory"
 @end example
 
-You should see a JSON response with @code{"status": "ok"} and a plan
-array.  On a CPU-only laptop, expect to wait 4--6 minutes for the
-first response while the model loads and processes the prompt.
-Subsequent calls reuse the loaded model and are faster.
+You will see a live spinner while the model processes the prompt, then a
+numbered plan summary, then the output of each step.  On a CPU-only laptop,
+the planning stage takes 4--6 minutes for the 3B model --- the spinner
+keeps moving the whole time so you know it is not frozen
+(@pxref{Progress Output}).
+
+@subsection Register the OpenClaw skill (optional)
+
+If you have the OpenClaw gateway installed and want to use Codebud from
+the browser UI:
+
+@example
+make install-skill
+openclaw skills list   @r{# should show codebud as ready}
+@end example
 
 @subsection Troubleshooting
 
-If the agent returns @code{"status": "plan_error"}, see
-@ref{Troubleshooting} for common causes and fixes.
+If @command{codebud doctor} reports failures or the agent returns a
+@code{plan_error}, see @ref{Troubleshooting} for common causes and fixes.

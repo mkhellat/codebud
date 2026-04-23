@@ -19,8 +19,13 @@ ollama pull qwen2.5-coder:3b-instruct-q4_K_M
 python -m venv .venv && source .venv/bin/activate
 pip install -e ".[dev]"
 
-# 4. Run
-OLLAMA_MODEL=qwen2.5-coder:3b-instruct-q4_K_M python run_agent.py -i "your task"
+# 4. Register the OpenClaw skill (optional, for browser UI)
+make install-skill
+
+# 5. Run
+export OLLAMA_MODEL=qwen2.5-coder:3b-instruct-q4_K_M
+codebud doctor          # verify everything is ready
+codebud run "your task"
 ```
 
 ## Documentation
@@ -47,9 +52,9 @@ agent/          Core agent (planner, executor, safety, sandbox, memory, tools)
 config/         Safety policy JSON files
 data/           Embedding index and memory snapshots
 docs/           GNU Texinfo manual
-openclaw/       OpenClaw skill wrapper
+openclaw/       OpenClaw SKILL.md (teaches the OpenClaw gateway to invoke codebud)
 tests/          Test suite (pytest)
-run_agent.py    CLI entry point
+run_agent.py    CLI entry point (also exposed as the codebud binary)
 ```
 
 ## Running tests
@@ -62,7 +67,7 @@ pytest -q
 
 | Variable | Default | Purpose |
 |----------|---------|---------|
-| `OLLAMA_MODEL` | *(required)* | Model name as shown in `ollama list` |
+| `OLLAMA_MODEL` | *(required)* | Model name as shown in `ollama list` / `codebud models` |
 | `OLLAMA_BASE_URL` | `http://localhost:11434` | Ollama server URL |
 | `EMBED_MODEL` | same as `OLLAMA_MODEL` | Override model used for embeddings |
 | `WEB_SEARCH_ENABLED` | `0` | Set to `1` to enable DuckDuckGo search |

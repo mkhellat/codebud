@@ -173,6 +173,17 @@ start with a prefix listed in @file{config/harmless_commands.json} or
 
 @strong{To diagnose:}
 
+Use the @command{plan} subcommand to inspect what the planner produced
+without executing anything:
+
+@example
+codebud plan --json "your request here"
+@end example
+
+This prints the raw JSON plan (or the error) so you can see exactly
+which tool and @code{cmd} the planner chose.  Alternatively, call the
+Python API directly:
+
 @example
 python -c "
 from agent.core import AgentCore

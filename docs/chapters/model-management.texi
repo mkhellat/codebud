@@ -322,14 +322,17 @@ Example --- run Codebud with the 3B model:
 
 @example
 export OLLAMA_MODEL=qwen2.5-coder:3b-instruct-q4_K_M
-python run_agent.py "create a hello.py that prints Hello, world"
+codebud run "create a hello.py that prints Hello, world"
 @end example
 
 Or inline for a one-off run:
 
 @example
-OLLAMA_MODEL=qwen2.5-coder:3b-instruct-q4_K_M python run_agent.py "..."
+OLLAMA_MODEL=qwen2.5-coder:3b-instruct-q4_K_M codebud run "..."
 @end example
+
+Use @command{codebud models} to see all pulled models with the active one
+highlighted (@pxref{The models Subcommand}).
 
 
 @node Switching Models
@@ -343,7 +346,7 @@ unloads models from RAM on demand.
 @example
 # Switch from 3B to 7B
 export OLLAMA_MODEL=qwen2.5-coder:7b-instruct-q4_K_M
-python run_agent.py "refactor agent/planner.py to add retry logic"
+codebud run "refactor agent/planner.py to add retry logic"
 @end example
 
 If the new model has not been pulled yet, pull it first
@@ -476,8 +479,8 @@ ollama pull qwen2.5-coder:3b-instruct-q4_K_M
 
 @item Run Codebud with that model
 @example
-OLLAMA_MODEL=qwen2.5-coder:3b-instruct-q4_K_M \
-    python run_agent.py -i "your task here"
+export OLLAMA_MODEL=qwen2.5-coder:3b-instruct-q4_K_M
+codebud run "your task here"
 @end example
 
 @item Back up all models to a single archive
