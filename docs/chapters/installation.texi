@@ -14,6 +14,7 @@ steps are the same in spirit --- substitute your package manager where
 * Installing Ollama::           Getting the local LLM server.
 * Cloning Codebud::             Getting the source code.
 * Python Environment::          Creating the virtual environment and installing deps.
+* Build System::                GNU-standard Makefile targets.
 * Verifying the Install::       Running a quick sanity check.
 @end menu
 
@@ -196,6 +197,88 @@ To reactivate in a new shell:
 @example
 source .venv/bin/activate
 @end example
+
+
+@node Build System
+@section Build System
+@cindex Makefile
+@cindex build system
+@cindex GNU make
+
+Codebud ships a GNU-standard @file{Makefile} that covers the complete
+developer lifecycle.  Every operation you need --- setting up the
+environment, running tests, building docs, installing the tool, and
+cleaning up --- is a @command{make} target.
+
+Run @command{make help} (the default target) to see all available targets
+and the current values of configurable variables:
+
+@example
+make help
+@end example
+
+@subsection Developer workflow (first-time setup)
+
+@example
+git clone https://github.com/mkhellat/codebud.git
+cd codebud
+make install-dev          @r{# create .venv/ and install all dependencies}
+make test                 @r{# run the full test suite}
+make lint                 @r{# check code style}
+make html                 @r{# build the HTML manual}
+@end example
+
+@subsection Target reference
+
+@multitable @columnfractions .30 .70
+@headitem Target @tab Effect
+@item @code{venv} @tab Create the virtual environment (@file{.venv/})
+@item @code{install} @tab Install codebud in editable mode (production deps only)
+@item @code{install-dev} @tab Install with all development dependencies
+@item @code{install-skill} @tab Register the OpenClaw skill; link @command{codebud} binary to @file{BINDIR}
+@item @code{uninstall} @tab Remove the binary link; @command{pip uninstall} the package
+@item @code{uninstall-skill} @tab Remove the OpenClaw skill registration and binary link
+@item @code{check} / @code{test} @tab Run the full test suite with @command{pytest}
+@item @code{coverage} @tab Run tests with branch coverage; write @file{htmlcov/index.html}
+@item @code{lint} @tab Check code style with @command{ruff check}
+@item @code{format} @tab Auto-format and auto-fix code with @command{ruff}
+@item @code{docs} @tab Build HTML, PDF, and GNU info documentation
+@item @code{html} @tab Build HTML documentation only
+@item @code{pdf} @tab Build PDF documentation only
+@item @code{info} @tab Build GNU info documentation only
+@item @code{docs-clean} @tab Remove documentation build artefacts
+@item @code{dist} @tab Build source archive (@file{.tar.gz}) and wheel (@file{.whl})
+@item @code{clean} @tab Remove build artefacts and caches (keep @file{.venv/})
+@item @code{distclean} @tab Remove everything not in version control (including @file{.venv/})
+@end multitable
+
+@subsection Configurable variables
+
+Override any variable on the command line:
+
+@example
+make install-skill PREFIX=/usr/local   @r{# install to /usr/local/bin}
+make test PYTHON_INTERP=python3.11     @r{# use a specific interpreter}
+@end example
+
+@table @env
+@item PREFIX
+Installation prefix.  Default: @file{~/.local}.
+@item BINDIR
+Binary installation directory.  Default: @file{$(PREFIX)/bin}.
+@item PYTHON_INTERP
+The @command{python3} interpreter used to create the virtual environment.
+Default: @command{python3}.
+@end table
+
+@subsection Stamp files
+
+The Makefile uses @dfn{stamp files} (@file{.venv/.stamp-venv} and
+@file{.venv/.stamp-dev}) to track whether the virtual environment and its
+dependencies are up to date.  When @file{pyproject.toml} changes, make
+automatically re-runs @command{pip install} on the next @command{make test}
+or @command{make lint} call --- you never need to remember to reinstall
+manually.
 
 
 @node Verifying the Install
