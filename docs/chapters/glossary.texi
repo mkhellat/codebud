@@ -2,7 +2,227 @@
 @chapter Glossary
 @cindex glossary
 
-@strong{This chapter is a stub and will be expanded in a future session.}
+@table @dfn
 
-Key terms: LLM, prompt, embedding, sandbox, plan step, tool, agent, Ollama,
-quantisation, token, context window.
+@item Agent
+A software system that perceives inputs, plans actions, and executes tools
+to accomplish a goal.  Codebud's agent receives natural-language requests
+and acts on the local filesystem.
+
+@item AgentCore
+The central Python class in @file{agent/core.py} that owns all subsystems
+(planner, safety engine, executor, memory, tool registry, sandbox) and
+exposes @code{handle_user_message()} to the CLI.
+
+@item Chunk
+A fragment of text returned by the model during streaming generation.
+Codebud's @code{on_chunk} callback receives each chunk as it arrives and
+forwards it to the @code{ProgressIndicator}.
+
+@item Code fence
+Markdown syntax that wraps a code block: @code{```json ... ```}.  Some
+models wrap their JSON output in code fences despite being instructed not
+to.  @code{LLMPlanner._strip_code_fence()} removes them before parsing.
+
+@item Context window
+The maximum number of tokens an LLM can process in a single call --- both
+input (prompt) and output (generated text) combined.  The 3B Qwen model
+has a context window of approximately 32,768 tokens, though Ollama defaults
+to a smaller @code{num_ctx} for speed.
+
+@item Cosine similarity
+A measure of similarity between two vectors: the cosine of the angle
+between them, ranging from @minus{}1 (opposite) to +1 (identical
+direction).  Used by @code{search_embeddings} to rank stored entries
+against a query embedding.
+
+@item Doctor
+The @command{codebud doctor} subcommand.  It runs eight health checks and
+prints a @samp{[PASS]} or @samp{[FAIL]} line for each, with a one-line fix
+command for every failure.
+
+@item Editable install
+A @command{pip install -e .} installation where the package's source
+directory is added directly to @code{sys.path} so changes to the source
+files are reflected immediately without reinstalling.  The @command{codebud}
+binary is placed in @file{.venv/bin/}.
+
+@item Embedding
+A fixed-length list of floating-point numbers that encodes the semantic
+meaning of a piece of text.  Texts with similar meaning have embeddings
+that point in similar directions in high-dimensional space.  Codebud
+generates embeddings with Ollama's @code{/api/embed} endpoint.
+
+@item Embedding index
+The file @file{data/embeddings/index.json}.  It stores a list of
+@code{@{text, vector@}} pairs.  The @code{search_embeddings} tool loads this
+file and returns the entries whose vectors are closest to the query vector.
+
+@item Executor
+The Python class in @file{agent/executor.py} that walks a validated plan
+and calls each tool in sequence.  It stops on the first non-zero return
+code and records every completed step in the @code{MemoryStore}.
+
+@item Few-shot example
+A worked example embedded in the LLM's prompt that demonstrates the
+expected input/output format.  Codebud's planner prompt contains six
+examples covering common request patterns.  Few-shot examples are the most
+reliable way to steer a small model toward correct JSON output.
+
+@item Generation phase
+The second phase of an LLM call.  After the model has processed the entire
+input prompt (prefill), it generates output tokens one at a time.  The
+@code{ProgressIndicator} shows a token counter and tokens-per-second rate
+during this phase.
+
+@item Harmless commands
+Commands listed in @file{config/harmless_commands.json}.  They are
+unconditionally allowed by the @code{SafetyEngine}.
+
+@item JSON plan
+The structured output produced by the @code{LLMPlanner}: a dict with
+@code{"status": "ok"} and a @code{"plan"} array of step dicts, each
+containing @code{id}, @code{description}, @code{tool}, and @code{args}.
+
+@item LLM (Large Language Model)
+A neural network trained on large amounts of text that can generate
+human-like text continuations given a prompt.  Codebud uses Qwen2.5-Coder
+served by Ollama.
+
+@item Memory timeline
+The persistent log in @file{data/memory/entries.json}.  After each
+executed step, the @code{MemoryStore} appends a snapshot with the
+timestamp, step metadata, and tool output.  The timeline accumulates
+across sessions.
+
+@item Model
+In the context of Codebud, @dfn{model} refers to a specific set of LLM
+weights --- for example, @code{qwen2.5-coder:3b-instruct-q4_K_M}.  The
+model is identified by name in @env{OLLAMA_MODEL} and served by the Ollama
+server.
+
+@item on_chunk
+A Python callback @code{Callable[[str], None]} that the CLI passes through
+the call stack (AgentCore → LLMPlanner → call_llm → _call_ollama) to
+receive streaming token fragments without coupling display logic to the LLM
+layer.
+
+@item Ollama
+A lightweight local server that loads LLM model weights into RAM and
+exposes them through a JSON REST API on @code{localhost:11434}.  Codebud
+uses Ollama's @code{/api/generate} endpoint (streaming) and
+@code{/api/embed} endpoint (embeddings).
+
+@item Plan error
+The response @code{@{"status": "plan_error", "error": "..."@}} returned by
+@code{AgentCore.handle_user_message()} when the planner cannot produce a
+valid plan.  Common causes: the model returned empty output, invalid JSON,
+or a plan that failed safety validation.
+
+@item Plan step
+One element of the @code{"plan"} array in a JSON plan.  Each step
+specifies one tool call: @code{id}, @code{description}, @code{tool},
+and @code{args}.
+
+@item Planner
+@code{LLMPlanner} in @file{agent/planner.py}.  It builds the prompt,
+calls the LLM, strips code fences, parses JSON, validates the plan
+structure, and retries once on parse failure.
+
+@item Powerful commands
+Commands listed in @file{config/powerful_commands.json}.  They are
+permitted by the @code{SafetyEngine} but flagged in the planner prompt as
+commands that modify state and should be used with care.
+
+@item Prefill phase
+The first phase of an LLM call.  The model processes the entire input
+prompt token-by-token before generating any output.  On CPU-only hardware
+this can take several minutes.  The @code{ProgressIndicator} shows a
+spinner and elapsed time during this phase.
+
+@item ProgressIndicator
+The class in @file{agent/cli/display.py} that runs a background thread to
+display a spinner during prefill and a token counter during generation.
+It writes to @code{stderr} using @code{\r} to update in place without
+scrolling.
+
+@item Prompt
+The text sent to the LLM.  Codebud's planning prompt contains critical
+rules, a tool catalogue, safety rules, a JSON response format, six
+few-shot examples, and the user's request.
+
+@item Quantisation
+A compression technique that reduces model weight precision from 32-bit
+floats to 4- or 8-bit integers.  @code{q4_K_M} means 4-bit quantisation
+using the K-quants method (medium variant).  Quantisation reduces the model
+file size and RAM requirement by roughly 8x with modest accuracy
+loss.
+
+@item Sandbox
+The @code{Sandbox} class in @file{agent/sandbox.py}.  It wraps
+@code{subprocess.run()}, enforces a 10-second timeout, blocks a small
+set of hard-coded dangerous patterns, and prevents shell expansion by
+using @code{shlex.split()}.
+
+@item SafetyEngine
+The @code{SafetyEngine} class in @file{agent/safety.py}.  It loads the
+three policy JSON files and applies prefix-based validation to every
+@code{command} step in a plan.
+
+@item Skill (OpenClaw)
+A @file{SKILL.md} file that teaches the OpenClaw agent how to invoke a
+CLI tool.  The OpenClaw gateway discovers skills from
+@file{~/.openclaw/skills/} and injects their Markdown content into its
+agent's context.
+
+@item Stamp file
+A zero-byte file whose modification time tracks whether a Makefile target
+is up to date.  Codebud uses @file{.venv/.stamp-venv} and
+@file{.venv/.stamp-dev} to avoid re-running @command{pip install} on every
+@command{make test} invocation.
+
+@item Step error
+The response @code{@{"status": "step_error", "error": "..."@}} returned by
+@code{Executor.execute_plan()} when a tool call returns a non-zero exit
+code or raises an exception.  Execution stops at the failed step.
+
+@item Streaming
+Receiving LLM output token-by-token as it is generated rather than waiting
+for the complete response.  Codebud uses @code{stream=True} in the Ollama
+API call so that the HTTP read timeout never fires during the long prefill
+phase on CPU-only hardware.
+
+@item Token
+The fundamental unit of LLM input and output.  Roughly one word, or
+one to four characters for English text.  Codebud's planning prompts are
+typically 350--400 tokens; generated plans are 50--100 tokens.
+
+@item Token rate
+Tokens generated per second during the generation phase.  For the 3B model
+on an i7-8550U CPU the typical rate is approximately 1.1@tie{}t/s.
+
+@item Tool
+A Python class with a @code{run(args: dict) -> dict} method that performs
+one operation.  Tools are the only way the agent interacts with the outside
+world.  The seven built-in tools are @code{file_write}, @code{file_read},
+@code{command}, @code{patch}, @code{web_search}, @code{embed}, and
+@code{search_embeddings}.
+
+@item ToolRegistry
+The @code{ToolRegistry} class in @file{agent/tools/tool_registry.py}.
+It holds the seven tool instances and provides @code{get()}, @code{has()},
+and @code{describe_tools()} to the planner and executor.
+
+@item Unified diff
+A standard text format for representing changes to a file.  Lines starting
+with @code{-} were removed; lines starting with @code{+} were added.
+The @code{patch} tool applies unified diffs produced by @command{diff -u}
+or @command{git diff}.
+
+@item usage_hint
+A class attribute on every tool that gives the planner concrete guidance:
+when to use the tool, what arguments it requires, and a one-line example.
+@code{ToolRegistry.describe_tools()} includes these hints in the planner
+prompt.
+
+@end table

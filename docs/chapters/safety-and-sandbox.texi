@@ -3,8 +3,259 @@
 @cindex safety
 @cindex sandbox
 
-@strong{This chapter is a stub and will be expanded in a future session.}
+Codebud applies two independent layers of protection before a shell command
+runs.  This chapter explains what each layer does, how they interact, and
+how to tune the policy for your workflow.
 
-This chapter will explain the SafetyEngine, the three JSON policy files
-(@file{config/harmless_commands.json}, @file{config/powerful_commands.json},
-@file{config/trusted_sequences.json}), and how the Sandbox enforces them.
+@menu
+* Two-Layer Model::             Why there are two guards, not one.
+* The Safety Engine::           JSON policy + per-step validation.
+* The Sandbox::                 Subprocess guard + timeout.
+* How a Command Gets Through::  The full decision path.
+* Editing the Policy Files::    Adding and removing allowed commands.
+* What Is Not Protected::       Honest limitations.
+@end menu
+
+
+@node Two-Layer Model
+@section Two-Layer Model
+@cindex two-layer safety
+
+@example
+LLM output
+    │
+    ▼
+SafetyEngine.validate_step()          @r{(layer 1: policy file check)}
+    │  reject → plan_error
+    ▼
+AgentCore._validate_plan()            @r{(same check, defence-in-depth)}
+    │  reject → plan_error
+    ▼
+Executor → tool.run(args)
+    │
+    ▼  (for command steps only)
+Sandbox._is_dangerous()               @r{(layer 2: hard-coded block list)}
+    │  block → returncode=1
+    ▼
+subprocess.run(shlex.split(cmd), timeout=10)
+@end example
+
+The two layers are independent.  Layer 1 is policy-driven and editable.
+Layer 2 is hard-coded and cannot be overridden from config files.  Both
+must pass for a shell command to run.
+
+Non-shell tools (@code{file_write}, @code{file_read}, @code{patch},
+@code{web_search}, @code{embed}, @code{search_embeddings}) pass directly
+through layer 1 and bypass layer 2 entirely.
+
+
+@node The Safety Engine
+@section The Safety Engine
+@cindex SafetyEngine
+@cindex validate_step
+
+@code{SafetyEngine.validate_step(step)} is called by @code{LLMPlanner}
+during plan validation and again by @code{AgentCore} before execution.
+For @code{command} steps it applies one rule:
+
+@quotation
+The @code{cmd} value must start with a prefix listed in
+@file{harmless_commands.json} or @file{powerful_commands.json}.
+@end quotation
+
+Matching is prefix-based: @code{"ls -la"} matches the prefix @code{"ls"};
+@code{"rm important.txt"} does not match any default prefix and is
+rejected.
+
+When a step fails validation the entire plan is rejected with the error
+@code{"LLM returned malformed plan"}.  The agent never executes a partial
+plan.
+
+@code{describe_rules()} returns a compact summary of the three policy
+lists, which is embedded in the planner prompt so the model can avoid
+proposing forbidden commands in the first place.
+
+@noindent
+Source: @file{agent/safety.py}
+
+
+@node The Sandbox
+@section The Sandbox
+@cindex Sandbox._is_dangerous
+@cindex hard-blocked commands
+
+The @code{Sandbox} is the last line of defence.  Even if the policy files
+were edited to allow a dangerous command, the sandbox checks a small
+hard-coded block list first:
+
+@table @code
+@item rm -rf /
+Deletes the root filesystem.
+
+@item rm -rf *
+Deletes everything in the current directory.
+
+@item shutdown
+Shuts down the machine.
+
+@item reboot
+Reboots the machine.
+
+@item :()@{:|:&@};:
+The classic fork bomb.
+@end table
+
+Commands matching any of these patterns return @code{returncode=1} and
+a @code{stderr} message without touching the filesystem.
+
+@strong{Timeout.}  Every command runs under a 10-second wall-clock timeout
+enforced by @code{subprocess.run(timeout=10)}.  A timed-out command
+returns @code{returncode=1} with the message
+@samp{Command timed out after 10 seconds}.
+
+@strong{No shell expansion.}  The command string is split with
+@code{shlex.split()} and passed as a list to @code{subprocess.run()}.
+Shell metacharacters (@code{&&}, @code{|}, @code{;}, @code{>}) are treated
+as literal argument characters, not operators.  To run a pipeline, use
+@code{"sh -c 'cmd1 | cmd2'"}.
+
+@noindent
+Source: @file{agent/sandbox.py}
+
+
+@node How a Command Gets Through
+@section How a Command Gets Through
+
+The following table traces the path of a @code{command} step from LLM
+output to execution.
+
+@multitable @columnfractions .25 .40 .35
+@headitem Command @tab Result @tab Reason
+@item @code{ls -la} @tab @kbd{executes} @tab matches @code{"ls"} prefix in harmless list
+@item @code{pytest -q} @tab @kbd{executes}* @tab matches @code{"python"} prefix --- or add @code{"pytest"} to harmless list
+@item @code{cat README.md} @tab @kbd{executes} @tab matches @code{"cat"} prefix
+@item @code{cp foo bar} @tab @kbd{executes} @tab matches @code{"cp"} prefix in powerful list
+@item @code{rm file.txt} @tab @kbd{rejected} @tab no @code{"rm"} prefix in either list
+@item @code{rm -rf /} @tab @kbd{blocked} @tab hard-coded in Sandbox regardless of policy
+@item @code{sudo pacman -Syu} @tab @kbd{rejected} @tab no @code{"sudo"} prefix in either list
+@item @code{git log} @tab @kbd{rejected}* @tab no @code{"git"} prefix by default --- add it to run git commands
+@end multitable
+
+@emph{*} Default lists do not include @code{"pytest"} or @code{"git"}.
+Add them to @file{harmless_commands.json} for a developer workflow
+(@pxref{Editing the Policy Files}).
+
+
+@node Editing the Policy Files
+@section Editing the Policy Files
+@cindex editing policy files
+
+Edit @file{config/harmless_commands.json} and
+@file{config/powerful_commands.json} with any text editor.  Changes take
+effect the next time @code{AgentCore} is initialised (i.e.@: the next
+@command{codebud run} invocation).
+
+@subsection Recommended configuration for Python development
+
+@example
+@r{config/harmless_commands.json:}
+[
+  "echo",
+  "cat",
+  "head",
+  "tail",
+  "ls",
+  "pwd",
+  "whoami",
+  "wc",
+  "find",
+  "diff",
+  "python",
+  "python3",
+  "pytest",
+  "ruff",
+  "git log",
+  "git status",
+  "git diff",
+  "git show"
+]
+
+@r{config/powerful_commands.json:}
+[
+  "grep",
+  "sed",
+  "awk",
+  "cp",
+  "mv",
+  "mkdir",
+  "touch",
+  "pip install",
+  "git add",
+  "git commit",
+  "git checkout"
+]
+@end example
+
+@subsection Tips
+
+@itemize
+@item
+Add @code{"git log"} rather than @code{"git"} to avoid inadvertently
+permitting @command{git push} or @command{git reset --hard}.
+
+@item
+Add @code{"pytest"} to the harmless list so the test suite can be run
+without the planner wrapping it in a @code{python -m pytest} call.
+
+@item
+After editing, run @command{codebud doctor} to confirm the files parse
+correctly.
+
+@item
+Entries are checked by prefix.  An entry of @code{"python"} also allows
+@code{python3} and @code{python -m pytest} --- they all start with
+@code{"python"}.  This is intentional; add more specific prefixes to
+tighten the policy if needed.
+@end itemize
+
+
+@node What Is Not Protected
+@section What Is Not Protected
+@cindex limitations, safety
+
+The safety system is designed to prevent accidental mistakes by a
+well-intentioned model, not to defend against an adversarial one.  Be
+aware of the following limitations:
+
+@itemize
+@item
+@strong{No output inspection.}  The sandbox runs commands but does not
+inspect what they write to the filesystem.  A @code{file_write} step can
+write any content to any writable path without safety checks.
+
+@item
+@strong{No network firewall.}  Commands launched via the @code{command}
+tool can make network calls.  The sandbox does not restrict outbound
+connections.
+
+@item
+@strong{No privilege escalation guard.}  @code{"sudo"} is not in the
+default policy, but if you add it, any @code{sudo} command the model
+proposes will run.
+
+@item
+@strong{Prefix matching is coarse.}  An entry of @code{"python"} allows
+@code{python -c "__import__('os').system('rm -rf /')"}.  The sandbox
+catches @code{"rm -rf /"} as a substring, but other destructive Python
+one-liners would not be caught.
+
+@item
+@strong{10-second timeout is short.}  Long operations (building a large
+project, running a slow test suite) will time out.  Adjust the timeout in
+@file{agent/sandbox.py} if needed.
+@end itemize
+
+@noindent
+@strong{Bottom line:} Codebud is a developer tool, not a security boundary.
+Run it in a directory you own, with files you are willing to modify, and
+under a user account that does not have elevated privileges.

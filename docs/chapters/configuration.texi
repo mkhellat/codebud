@@ -2,8 +2,315 @@
 @chapter Configuration
 @cindex configuration
 
-@strong{This chapter is a stub and will be expanded in a future session.}
+Codebud has no configuration file of its own.  All runtime behaviour is
+controlled through environment variables and through the JSON policy files
+in the @file{config/} directory.  This chapter documents both.
 
-This chapter will document all environment variables (@env{OLLAMA_MODEL},
-@env{OPENAI_API_KEY}, @env{OLLAMA_BASE_URL}) and the JSON config files in
-@file{config/}.
+@menu
+* Environment Variables Overview::  Variables that control Codebud.
+* LLM Backend Variables::           Choosing Ollama or OpenAI.
+* Feature Flags::                   Enabling optional features.
+* Policy JSON Files::               The three safety configuration files.
+* Harmless Commands::               Commands always allowed.
+* Powerful Commands::               Commands allowed with care.
+* Trusted Sequences::               Named multi-step sequences.
+* Checking Your Configuration::     Using codebud config.
+@end menu
+
+
+@node Environment Variables Overview
+@section Environment Variables Overview
+@cindex environment variables
+
+The table below lists every variable Codebud reads, its default, and what
+it does.
+
+@multitable @columnfractions .25 .25 .50
+@headitem Variable @tab Default @tab Purpose
+@item @env{OLLAMA_MODEL}
+@tab @emph{(none)}
+@tab Model name exactly as it appears in @command{ollama list}.
+Required for the Ollama backend.
+@item @env{OLLAMA_BASE_URL}
+@tab @code{http://localhost:11434}
+@tab Base URL of the Ollama REST API.
+@item @env{EMBED_MODEL}
+@tab same as @env{OLLAMA_MODEL}
+@tab Model used for generating embeddings.  Override to use a different
+model for the @code{embed} tool without changing the planning model.
+@item @env{OPENAI_API_KEY}
+@tab @emph{(none)}
+@tab When set, enables the OpenAI fallback backend if Ollama is
+unavailable.
+@item @env{OPENAI_MODEL}
+@tab @code{gpt-3.5-turbo}
+@tab OpenAI model to use when the OpenAI backend is active.
+@item @env{WEB_SEARCH_ENABLED}
+@tab @code{0}
+@tab Set to @code{1} to enable the @code{web_search} tool.  When
+@code{0}, the tool reports itself as unavailable to the planner.
+@end multitable
+
+To see the resolved value of every variable, run:
+
+@example
+codebud config
+@end example
+
+To make a variable permanent, add it to your shell profile:
+
+@example
+echo 'export OLLAMA_MODEL=qwen2.5-coder:3b-instruct-q4_K_M' >> ~/.zshrc
+@end example
+
+
+@node LLM Backend Variables
+@section LLM Backend Variables
+@cindex LLM backend
+@cindex Ollama backend
+@cindex OpenAI backend
+
+Codebud supports two LLM backends, selected by priority:
+
+@enumerate
+@item
+@strong{Ollama} (preferred) --- used when @env{OLLAMA_MODEL} is set and
+the Ollama server at @env{OLLAMA_BASE_URL} is reachable.
+Codebud streams tokens using @code{stream=True} so that the HTTP
+connection never times out during the long prefill phase on CPU-only
+hardware.
+
+@item
+@strong{OpenAI} (fallback) --- used when @env{OPENAI_API_KEY} is set and
+Ollama is not configured or not reachable.  The OpenAI call is
+non-streaming and uses @code{temperature=0} for deterministic output.
+@end enumerate
+
+If neither backend is configured, @command{codebud} logs a warning and
+returns an empty string to the planner, which triggers a @code{plan_error}.
+
+@subsection Pointing at a remote Ollama instance
+
+If you run Ollama on a separate machine (for example, a desktop with more
+RAM), change @env{OLLAMA_BASE_URL}:
+
+@example
+export OLLAMA_BASE_URL=http://192.168.1.50:11434
+export OLLAMA_MODEL=qwen2.5-coder:7b-instruct-q4_K_M
+codebud run "your task"
+@end example
+
+Codebud does not require the model to be on the same machine as the CLI.
+
+
+@node Feature Flags
+@section Feature Flags
+@cindex feature flags
+@cindex web search, enabling
+
+@table @env
+@item WEB_SEARCH_ENABLED
+Default: @code{0} (disabled).  Set to @code{1} (or @code{true} or
+@code{yes}) to enable the @code{web_search} tool.  When enabled, the tool
+sends a POST request to @code{https://lite.duckduckgo.com/lite/} and
+parses the HTML response.  No API key is required.
+
+@example
+WEB_SEARCH_ENABLED=1 codebud run "find the latest Python release notes"
+@end example
+
+When disabled, the @code{web_search} tool's description in the planner
+prompt is replaced with a notice so the planner knows not to use it.
+@end table
+
+
+@node Policy JSON Files
+@section Policy JSON Files
+@cindex policy files
+@cindex config/ directory
+
+The @file{config/} directory contains three JSON files that the
+@code{SafetyEngine} loads at startup.  You can edit them without restarting
+Codebud --- they are re-read each time @code{AgentCore} is initialised.
+
+@table @file
+@item config/harmless_commands.json
+Commands that are always permitted.  @xref{Harmless Commands}.
+
+@item config/powerful_commands.json
+Commands that modify the filesystem or process state.  They are permitted
+but the planner is warned to use them carefully.  @xref{Powerful Commands}.
+
+@item config/trusted_sequences.json
+Named multi-step sequences that the planner may propose as a unit.
+@xref{Trusted Sequences}.
+@end table
+
+All three files must be valid JSON arrays.  If a file is missing or
+malformed, the @code{SafetyEngine} treats that list as empty and logs a
+warning.  @command{codebud doctor} validates all three files on startup.
+
+
+@node Harmless Commands
+@section Harmless Commands
+@cindex harmless_commands.json
+
+@file{config/harmless_commands.json} contains a JSON array of command
+prefixes that are always permitted.  The @code{SafetyEngine} accepts a
+@code{command} step when its @code{cmd} argument starts with any listed
+prefix.
+
+Default content:
+
+@example
+[
+  "echo",
+  "cat",
+  "ls",
+  "pwd",
+  "whoami",
+  "python",
+  "python3"
+]
+@end example
+
+To allow additional read-only tools:
+
+@example
+[
+  "echo",
+  "cat",
+  "ls",
+  "pwd",
+  "whoami",
+  "python",
+  "python3",
+  "head",
+  "tail",
+  "wc",
+  "file",
+  "stat",
+  "find",
+  "tree",
+  "diff",
+  "git log",
+  "git status",
+  "git diff",
+  "pytest"
+]
+@end example
+
+@strong{Note:} the match is prefix-based.  Adding @code{"git"} permits
+@emph{all} git subcommands, including @command{git push} and
+@command{git reset --hard}.  Be specific: add @code{"git log"},
+@code{"git status"}, and @code{"git diff"} separately rather than the
+bare @code{"git"}.
+
+
+@node Powerful Commands
+@section Powerful Commands
+@cindex powerful_commands.json
+
+@file{config/powerful_commands.json} contains prefixes for commands that
+are permitted but can modify state.  The safety engine allows them exactly
+as it does harmless commands; the separate list is a signal to the planner
+prompt that these commands deserve extra care.
+
+Default content:
+
+@example
+[
+  "grep",
+  "sed",
+  "awk",
+  "cp",
+  "mv"
+]
+@end example
+
+Common additions for a developer workflow:
+
+@example
+[
+  "grep",
+  "sed",
+  "awk",
+  "cp",
+  "mv",
+  "mkdir",
+  "touch",
+  "chmod",
+  "pip install",
+  "npm install",
+  "git add",
+  "git commit"
+]
+@end example
+
+@strong{Warning:} do not add @code{"rm"}, @code{"sudo"}, or
+@code{"shutdown"} to either list.  The sandbox has a separate hard-coded
+block for the most destructive patterns (@pxref{The Sandbox}).
+
+
+@node Trusted Sequences
+@section Trusted Sequences
+@cindex trusted_sequences.json
+
+@file{config/trusted_sequences.json} is a JSON array of named
+multi-step sequences.  Each entry has a @code{name} and a @code{sequence}
+of command prefixes:
+
+@example
+[
+  @{
+    "name": "install_python_package",
+    "sequence": ["python3 -m pip install"]
+  @}
+]
+@end example
+
+The @code{SafetyEngine} loads this file but the current implementation does
+not apply sequence-level validation beyond what the step-by-step check
+already covers.  The file is reserved for future expansion --- for example,
+requiring that @command{pip install} is always followed by a test run
+before any commit.
+
+
+@node Checking Your Configuration
+@section Checking Your Configuration
+@cindex codebud config
+@cindex codebud doctor
+
+Two subcommands help verify your configuration:
+
+@table @command
+@item codebud config
+Prints the resolved value of every environment variable, including
+defaults.  Use this to confirm that your exported variables are
+being read correctly.
+
+@example
+codebud config
+@end example
+
+Example output:
+
+@example
+Codebud resolved configuration:
+  OLLAMA_MODEL       = qwen2.5-coder:3b-instruct-q4_K_M
+  OLLAMA_BASE_URL    = http://localhost:11434
+  EMBED_MODEL        = qwen2.5-coder:3b-instruct-q4_K_M
+  OPENAI_API_KEY     = (not set)
+  WEB_SEARCH_ENABLED = 0
+@end example
+
+@item codebud doctor
+Checks each configuration value for correctness: whether the Ollama server
+is reachable, whether the selected model has been pulled, and whether the
+three policy JSON files parse without errors.  Each check prints
+@samp{[PASS]} or @samp{[FAIL]} with a one-line fix command.
+
+@example
+codebud doctor
+@end example
+@end table

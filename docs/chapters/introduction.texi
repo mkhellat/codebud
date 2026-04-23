@@ -1,10 +1,154 @@
 @node Introduction
 @chapter Introduction
 @cindex introduction
+@cindex overview
 
-@strong{This chapter is a stub and will be expanded in a future session.}
+Codebud is a local, CPU-friendly coding agent.  You describe a task in
+plain English; Codebud asks a locally-running language model to produce a
+step-by-step plan, validates it against a safety policy, executes each step
+using built-in tools (file I/O, shell commands, unified-diff patching,
+web search, embeddings), and records what happened in a persistent memory
+timeline.  No data leaves your machine.
 
-Codebud is a local, CPU-friendly coding agent that uses Ollama and
-Qwen2.5-Coder to plan and execute software tasks on your machine.  It is
-designed for developers who want a Cursor-style AI assistant without sending
-code to an external service.
+@menu
+* What Codebud Does::           The agent loop in one paragraph.
+* Design Goals::                Why it was built this way.
+* What Codebud Does Not Do::    Honest limitations.
+* Who This Manual Is For::      Audience and assumed knowledge.
+* How to Read This Manual::     Chapter-by-chapter guide.
+@end menu
+
+
+@node What Codebud Does
+@section What Codebud Does
+@cindex agent loop, summary
+
+A single invocation of @command{codebud run "your request"} goes through
+four stages:
+
+@enumerate
+@item
+@strong{Plan.}  The LLM planner reads your request and the catalogue of
+available tools.  It returns a JSON array of steps, each containing a tool
+name, a human-readable description, and a dictionary of arguments.
+
+@item
+@strong{Validate.}  The safety engine inspects every step before anything
+executes.  Steps that would run disallowed shell commands are rejected
+immediately.
+
+@item
+@strong{Execute.}  The executor walks the validated step list in order.
+Each step calls one tool; the tool returns structured output
+(@code{stdout}, @code{stderr}, @code{returncode}).  Execution stops on the
+first non-zero exit code.
+
+@item
+@strong{Remember.}  Every completed step is appended to an on-disk memory
+timeline (@file{data/memory/entries.json}) so that a future session can
+inspect what happened.
+@end enumerate
+
+The @command{chat} subcommand repeats this cycle across multiple turns
+using a single persistent @code{AgentCore} instance, giving the planner
+access to everything that happened earlier in the session.
+
+
+@node Design Goals
+@section Design Goals
+@cindex design goals
+@cindex privacy
+@cindex offline
+
+Codebud was built around three constraints:
+
+@table @strong
+@item Privacy by default
+All inference happens through Ollama on your own hardware.  No prompt,
+file name, or command output ever reaches an external server.  An internet
+connection is only needed when you explicitly enable the DuckDuckGo web
+search tool (@env{WEB_SEARCH_ENABLED=1}).
+
+@item CPU-first
+The recommended model (@code{qwen2.5-coder:3b-instruct-q4_K_M}) runs on a
+2018 laptop CPU with 8@tie{}GB RAM.  The streaming LLM interface and live
+progress indicator make the 4--6 minute planning phase bearable
+(@pxref{Progress Output}).
+
+@item Explainability
+The agent never executes without a visible plan.  The @command{plan}
+subcommand lets you inspect what the LLM intends to do before committing.
+The safety policy is a plain JSON file you can read and edit.  Memory is a
+plain JSON file you can inspect at any time.
+@end table
+
+
+@node What Codebud Does Not Do
+@section What Codebud Does Not Do
+
+Codebud is designed for coding and file-management tasks on your local
+machine.  It is not a general-purpose assistant.
+
+@itemize
+@item
+It does not browse the web unless @env{WEB_SEARCH_ENABLED=1} is set.
+@item
+It does not have persistent knowledge between sessions --- only the memory
+timeline from previous runs is available.
+@item
+It does not self-modify or update its own planner prompt automatically.
+@item
+It does not run GUI applications, manage databases, or control system
+services.  Those commands are blocked by the safety policy by default.
+@item
+Sandboxing is lightweight (see @ref{Safety and Sandbox}).  Do not run
+Codebud with elevated privileges or point it at sensitive files.
+@end itemize
+
+
+@node Who This Manual Is For
+@section Who This Manual Is For
+@cindex audience
+
+This manual is written for developers who want to:
+
+@itemize
+@item
+Run Codebud on their own machine for everyday coding tasks.
+@item
+Understand the architecture well enough to add new tools or tune the
+planner prompt.
+@item
+Integrate Codebud into the OpenClaw browser UI.
+@end itemize
+
+@noindent
+Assumed knowledge: comfort with a Linux terminal, Python virtual
+environments, and the basics of JSON.  No machine-learning background is
+required.
+
+
+@node How to Read This Manual
+@section How to Read This Manual
+@cindex manual structure
+
+@table @strong
+@item First-time setup
+@ref{Installation} @arrow{} @ref{Model Management} @arrow{} @ref{Usage}.
+Run @command{codebud doctor} whenever something is not working.
+
+@item Understanding the system
+@ref{Architecture} explains the component layout.
+@ref{Tools Reference} documents each tool's contract.
+
+@item Changing behaviour
+@ref{Configuration} lists all environment variables.
+@ref{Safety and Sandbox} explains how to edit the policy files.
+
+@item Contributing
+@ref{Development} covers the test suite, tool-addition checklist, and
+prompt-tuning tips.
+
+@item Looking up a term
+@ref{Glossary}.
+@end table

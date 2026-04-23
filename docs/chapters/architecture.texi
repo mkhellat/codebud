@@ -1,8 +1,430 @@
 @node Architecture
 @chapter Architecture
 @cindex architecture
+@cindex AgentCore
+@cindex component diagram
 
-@strong{This chapter is a stub and will be expanded in a future session.}
+This chapter describes Codebud's internal structure: what each component
+does, how data flows between them, and why the boundaries are drawn where
+they are.
 
-This chapter will describe the AgentCore orchestration loop: planner
-@arrow{} safety check @arrow{} executor @arrow{} memory timeline.
+@menu
+* Component Overview::          The six subsystems and their roles.
+* The Agent Loop::              Data flow through a single request.
+* AgentCore::                   The central orchestrator.
+* LLMPlanner::                  Prompt construction and JSON parsing.
+* SafetyEngine::                Two-layer validation.
+* Executor::                    Step-by-step execution.
+* Sandbox::                     Controlled command execution.
+* MemoryStore::                 Persistent timeline.
+* ToolRegistry::                Tool catalogue.
+* LLM Stub::                    Backend-agnostic LLM interface.
+* File Layout::                 Where everything lives on disk.
+@end menu
+
+
+@node Component Overview
+@section Component Overview
+@cindex subsystems
+
+@example
+                     user message
+                          │
+                     ┌────▼─────┐
+                     │AgentCore │   orchestrates everything
+                     └────┬─────┘
+          ┌───────────────┼───────────────┐
+          │               │               │
+     ┌────▼────┐    ┌─────▼──────┐  ┌────▼──────┐
+     │LLMPlanner│   │SafetyEngine│  │  Executor  │
+     │          │   │            │  │            │
+     │ prompt   │   │ validate   │  │ run steps  │
+     │ parse    │   │ step-by-   │  │ stop on err│
+     │ retry    │   │ step       │  └────┬───────┘
+     └────┬─────┘   └────────────┘       │
+          │                        ┌─────┴──────┐
+     ┌────▼──────┐            ┌────▼────┐  ┌────▼──────┐
+     │ LLM Stub  │            │  Tools  │  │MemoryStore│
+     │ (Ollama / │            │ (7 built│  │ timeline  │
+     │  OpenAI)  │            │  -ins)  │  │ on disk   │
+     └───────────┘            └────┬────┘  └───────────┘
+                                   │
+                              ┌────▼────┐
+                              │ Sandbox │
+                              │ (shell  │
+                              │  exec)  │
+                              └─────────┘
+@end example
+
+@noindent
+Each subsystem has a single responsibility and communicates only through
+plain Python dicts.  No subsystem imports from the CLI layer.
+
+
+@node The Agent Loop
+@section The Agent Loop
+@cindex agent loop
+
+This is the full sequence of events for @command{codebud run "your request"}:
+
+@enumerate
+@item
+@strong{CLI} parses the arguments and constructs an @code{AgentCore}.
+@code{AgentCore.__init__} creates all subsystems in dependency order:
+@code{Sandbox} → @code{ToolRegistry} → @code{SafetyEngine} →
+@code{MemoryStore} → @code{LLMPlanner} → @code{Executor}.
+
+@item
+@strong{CLI} starts the @code{ProgressIndicator} thread, then calls
+@code{AgentCore.handle_user_message(message, on_chunk=...)}.
+
+@item
+@strong{AgentCore} delegates to @code{LLMPlanner.generate_plan(message)}.
+
+@item
+@strong{LLMPlanner} calls @code{_build_prompt()}, which embeds the tool
+catalogue (from @code{ToolRegistry.describe_tools()}) and safety rules
+(from @code{SafetyEngine.describe_rules()}) into a structured few-shot
+prompt.
+
+@item
+@strong{LLMPlanner} calls @code{call_llm(prompt, on_chunk=...)} via the
+LLM stub.  Tokens stream back from Ollama; each fragment is forwarded to
+@code{on_chunk}, which updates the progress display.
+
+@item
+@strong{LLMPlanner} strips any Markdown code fences from the raw output
+and attempts @code{json.loads()}.  If parsing fails, it retries once
+with a minimal JSON-only prompt.  If it fails again, it returns
+@code{@{"status": "plan_error", ...@}}.
+
+@item
+@strong{LLMPlanner} validates the parsed JSON:
+@code{_validate_plan_structure()} checks that every step has @code{id},
+@code{description}, @code{tool}, and @code{args}; that the named tool
+exists in the registry; and that @code{SafetyEngine.validate_step(step)}
+passes.
+
+@item
+@strong{AgentCore} re-validates the returned plan with
+@code{_validate_plan()} (same checks, defence-in-depth).
+
+@item
+@strong{CLI} receives the validated plan dict and prints it.  In
+@command{run} mode it immediately calls @code{Executor.execute_plan()}.
+In @command{chat} mode it prompts the user for @kbd{y/n/a/q} first.
+
+@item
+@strong{Executor} iterates the step list.  For each step it calls
+@code{ToolRegistry.get(tool_name).run(args)}.  For @code{command} steps
+this delegates to @code{Sandbox.run_command(cmd)}.
+
+@item
+@strong{Executor} calls @code{MemoryStore.add_snapshot(step, result)}
+after each completed step.  The snapshot is persisted to
+@file{data/memory/entries.json} immediately.
+
+@item
+@strong{Executor} stops and returns a @code{step_error} dict if any step
+returns a non-zero @code{returncode} or raises an exception.
+
+@item
+@strong{CLI} prints the final one-line outcome per step (or full stdout
+if @option{--verbose}).
+@end enumerate
+
+
+@node AgentCore
+@section AgentCore
+@cindex AgentCore
+
+@code{AgentCore} is the entry point for all agent work.  The CLI creates
+one instance and calls @code{handle_user_message()} once per turn.  In
+@command{chat} mode the same instance is reused across turns so that
+@code{MemoryStore} accumulates a session history.
+
+@strong{Public API:}
+
+@table @code
+@item handle_user_message(message, on_chunk=None)
+Generate a plan and return it.  Never executes steps.
+Returns @code{@{"status": "ok", "plan": [...]@}} or
+@code{@{"status": "plan_error", "error": "..."@}}.
+
+@item regenerate(payload)
+Re-plan using the last user message.  Called by OpenClaw when the user
+clicks @emph{Regenerate}.
+@end table
+
+@noindent
+Source: @file{agent/core.py}
+
+
+@node LLMPlanner
+@section LLMPlanner
+@cindex LLMPlanner
+@cindex prompt, construction
+@cindex retry logic
+
+@code{LLMPlanner} turns a user message into a validated plan dict.
+
+@subsection Prompt construction
+
+@code{_build_prompt()} assembles a structured prompt with five sections:
+
+@enumerate
+@item
+@strong{Critical rules} --- five numbered instructions telling the model
+to output only JSON and to pick the right tool for each operation (e.g.
+``use @code{command} not @code{file_read} to list directories'').
+
+@item
+@strong{Available tools} --- the output of @code{ToolRegistry.describe_tools()},
+which lists each tool name, its description, and its @code{usage_hint}.
+
+@item
+@strong{Safety rules} --- the output of @code{SafetyEngine.describe_rules()},
+which lists the harmless and powerful command prefixes.
+
+@item
+@strong{Response format} --- the exact JSON schema expected.
+
+@item
+@strong{Few-shot examples} --- six worked examples covering: list files,
+read a file, run tests, write a file, a multi-step task, and a
+@code{plan_error} for unsupported requests.
+@end enumerate
+
+@subsection Retry logic
+
+@code{generate_plan()} makes at most two LLM calls:
+
+@enumerate
+@item
+First call with the full prompt.  If @code{json.loads()} succeeds and the
+plan validates, it is returned immediately.  If parsing fails, @code{None}
+is returned from @code{_attempt()} to signal a retry.
+
+@item
+Retry with @code{_build_retry_prompt()}: a minimal two-paragraph prompt
+that says only ``output valid JSON'' and lists the tool names.  Most
+models that returned prose on the first try respond correctly here.
+
+@item
+If both attempts fail, @code{plan_error: "LLM returned invalid JSON"} is
+returned.
+@end enumerate
+
+An empty LLM response short-circuits the retry: it returns
+@code{plan_error: "LLM returned empty output"} immediately without a
+second call.
+
+@noindent
+Source: @file{agent/planner.py}
+
+
+@node SafetyEngine
+@section SafetyEngine
+@cindex SafetyEngine
+@cindex safety validation
+
+@code{SafetyEngine} is consulted at two points: during plan validation
+inside @code{LLMPlanner._validate_plan_structure()} and again inside
+@code{AgentCore._validate_plan()}.  This double-check provides
+defence-in-depth.
+
+@code{validate_step(step)} applies a single rule for @code{command} steps:
+the @code{cmd} value must start with a prefix listed in either
+@file{harmless_commands.json} or @file{powerful_commands.json}.  If not,
+the step is rejected and the whole plan fails validation with
+@code{"LLM returned malformed plan"}.
+
+All other tool types (@code{file_write}, @code{file_read}, @code{patch},
+@code{web_search}, @code{embed}, @code{search_embeddings}) are accepted
+unconditionally at the @code{SafetyEngine} level; the Sandbox provides a
+second layer of protection for shell commands only.
+
+@noindent
+Source: @file{agent/safety.py}
+
+
+@node Executor
+@section Executor
+@cindex Executor
+@cindex step execution
+
+@code{Executor.execute_plan(plan_output)} walks the @code{plan} array and
+executes each step in sequence.
+
+For each step:
+
+@enumerate
+@item Look up the tool instance via @code{ToolRegistry.get(tool_name)}.
+@item Call @code{tool.run(args)}.
+@item Validate the result dict has @code{stdout}, @code{stderr}, @code{returncode}.
+@item Append a snapshot to @code{MemoryStore}.
+@item If @code{returncode != 0}, return @code{@{"status": "step_error"@}}.
+@end enumerate
+
+The executor returns @code{@{"status": "ok", "results": @{step_id: result, ...@}@}}
+when all steps succeed.
+
+@noindent
+Source: @file{agent/executor.py}
+
+
+@node Sandbox
+@section Sandbox
+@cindex Sandbox
+@cindex subprocess
+@cindex timeout
+
+@code{Sandbox.run_command(cmd)} is the only place in Codebud where a
+subprocess is launched.  It provides a lightweight second safety layer
+independent of the JSON policy files.
+
+@table @strong
+@item Hard-blocked patterns
+The sandbox always blocks: @code{rm -rf /}, @code{rm -rf *},
+@code{shutdown}, @code{reboot}, and the classic fork bomb
+(@code{:()@{:|:&@};:}).  These are checked before the command is passed to
+@code{subprocess.run()}.
+
+@item Timeout
+Every command has a 10-second wall-clock timeout enforced by
+@code{subprocess.run(timeout=...)}.  A timed-out command returns
+@code{returncode=1} and a timeout message in @code{stderr}.
+
+@item No shell expansion
+Commands are split with @code{shlex.split()} and passed as a list, so
+shell metacharacters (@code{&&}, @code{|}, @code{>}) are not interpreted.
+@end table
+
+@noindent
+Source: @file{agent/sandbox.py}
+
+
+@node MemoryStore
+@section MemoryStore
+@cindex MemoryStore
+@cindex memory timeline
+@cindex data/memory/entries.json
+
+@code{MemoryStore} maintains a chronological list of execution snapshots.
+Each snapshot contains:
+
+@example
+@{
+  "timestamp": "2026-04-23T15:30:00.000000",
+  "data": @{
+    "step":   @{ "id": "step_0", "tool": "command", "args": @{...@} @},
+    "result": @{ "stdout": "...", "stderr": "", "returncode": 0 @}
+  @}
+@}
+@end example
+
+Snapshots are appended to @file{data/memory/entries.json} after every
+completed step and are persisted immediately, so a crash mid-plan does not
+lose earlier results.
+
+@noindent
+Source: @file{agent/memory.py}
+
+
+@node ToolRegistry
+@section ToolRegistry
+@cindex ToolRegistry
+
+@code{ToolRegistry} holds the seven built-in tool instances and provides
+three methods:
+
+@table @code
+@item get(name)
+Return the tool instance.
+
+@item has(name)
+Return @code{True} if the tool exists.
+
+@item describe_tools()
+Return a multi-line string for the planner prompt: one line per tool with
+its name and @code{description}, plus an indented @samp{When to use:}
+line taken from its @code{usage_hint} attribute.
+@end table
+
+@noindent
+Source: @file{agent/tools/tool_registry.py}
+
+
+@node LLM Stub
+@section LLM Stub
+@cindex llm_stub.py
+@cindex LLM backends
+
+@file{agent/llm_stub.py} exposes a single public function:
+@code{call_llm(prompt, timeout=600.0, on_chunk=None)}.
+
+It selects a backend in this priority order:
+
+@enumerate
+@item
+@strong{Ollama} (preferred) --- if @env{OLLAMA_MODEL} is set and the
+server at @env{OLLAMA_BASE_URL} responds to @code{GET /api/tags}.  Uses
+@code{POST /api/generate} with @code{stream=True} and
+@code{temperature=0}.
+
+@item
+@strong{OpenAI} (fallback) --- if @env{OPENAI_API_KEY} is set.  Uses a
+non-streaming @code{ChatCompletion} call with @code{temperature=0}.
+
+@item
+@strong{No-op} --- logs a warning and returns an empty string, which the
+planner converts to @code{plan_error}.
+@end enumerate
+
+The @code{on_chunk} callback receives each text fragment from the Ollama
+streaming response.  The CLI passes @code{ProgressIndicator.on_chunk} here
+to drive the live token counter without coupling display logic to the LLM
+layer.
+
+
+@node File Layout
+@section File Layout
+@cindex file layout
+@cindex directory structure
+
+@example
+agent/
+├── core.py            AgentCore orchestrator
+├── planner.py         LLMPlanner (prompt + parse + retry)
+├── executor.py        Executor (step-by-step runner)
+├── safety.py          SafetyEngine (policy validation)
+├── sandbox.py         Sandbox (subprocess + timeout)
+├── memory.py          MemoryStore (timeline persistence)
+├── llm_stub.py        call_llm() (Ollama / OpenAI)
+└── tools/
+    ├── tool_registry.py   ToolRegistry
+    ├── file_io.py         file_write, file_read
+    ├── commands.py        command
+    ├── patcher.py         patch
+    ├── web_search.py      web_search
+    └── embeddings.py      embed, search_embeddings
+
+agent/cli/
+├── display.py         ProgressIndicator, plan printer, step printer
+├── doctor.py          health checks
+└── errors.py          error → fix lookup table
+
+config/
+├── harmless_commands.json
+├── powerful_commands.json
+└── trusted_sequences.json
+
+data/
+├── memory/entries.json        execution timeline (auto-created)
+└── embeddings/index.json      embedding index (auto-created)
+
+openclaw/
+└── SKILL.md           OpenClaw skill definition
+
+run_agent.py           CLI entry point (codebud binary)
+@end example

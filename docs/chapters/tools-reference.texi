@@ -2,8 +2,384 @@
 @chapter Tools Reference
 @cindex tools reference
 
-@strong{This chapter is a stub and will be expanded in a future session.}
+This chapter documents every built-in tool.  Tools are the only way the
+agent can interact with the outside world.  The planner names a tool in
+each plan step; the executor calls @code{tool.run(args)} and passes the
+result to the memory store.
 
-This chapter will document every built-in tool: @code{file_read},
-@code{file_write}, @code{patch}, @code{command}, @code{web_search},
-@code{embed}, @code{search_embeddings}.
+Every tool follows the same contract:
+
+@example
+@r{Input:}  args dict          (keys and types documented per tool)
+@r{Output:} @{ "stdout": str, "stderr": str, "returncode": int @}
+@end example
+
+A @code{returncode} of @code{0} means success; anything else means failure.
+The executor stops and returns a @code{step_error} on the first failure.
+
+@menu
+* file_write::          Create or overwrite a file.
+* file_read::           Read a file's contents.
+* command::             Execute a shell command.
+* patch::               Apply a unified diff to a file.
+* web_search::          Search the web via DuckDuckGo Lite.
+* embed::               Generate an embedding vector.
+* search_embeddings::   Find semantically similar stored entries.
+@end menu
+
+
+@node file_write
+@section @code{file_write}
+@cindex file_write tool
+
+Creates or overwrites a file with the given content.  Parent directories
+are created automatically with @code{os.makedirs(exist_ok=True)}.
+
+@subsection Arguments
+
+@table @code
+@item path
+@emph{Required.}  Path to the file to write (relative to the working
+directory or absolute).
+
+@item content
+@emph{Required.}  The complete text to write.  The file is written in one
+shot; any existing content is replaced entirely.
+@end table
+
+@subsection Returns
+
+On success:
+@example
+@{ "stdout": "Wrote N bytes to path", "stderr": "", "returncode": 0 @}
+@end example
+
+On failure:
+@example
+@{ "stdout": "", "stderr": "FileWriteTool error: ...", "returncode": 1 @}
+@end example
+
+@subsection When to use
+
+Use @code{file_write} when you need to create a new file or replace a
+file's entire content.  Prefer @code{patch} when you only want to change
+a few lines in an existing file --- @code{file_write} requires the planner
+to reproduce the complete file contents, which wastes tokens and risks
+losing existing code.
+
+@subsection Example plan step
+
+@example
+@{
+  "id": "step_0",
+  "description": "create hello.py",
+  "tool": "file_write",
+  "args": @{
+    "path": "hello.py",
+    "content": "print('Hello, world')\n"
+  @}
+@}
+@end example
+
+
+@node file_read
+@section @code{file_read}
+@cindex file_read tool
+
+Reads the content of a named file and returns it in @code{stdout}.
+
+@subsection Arguments
+
+@table @code
+@item path
+@emph{Required.}  Path to an existing file.  Must be a file, not a
+directory.
+@end table
+
+@subsection Returns
+
+On success:
+@example
+@{ "stdout": "<file contents>", "stderr": "", "returncode": 0 @}
+@end example
+
+On failure (file not found, permission denied):
+@example
+@{ "stdout": "", "stderr": "File not found: path", "returncode": 1 @}
+@end example
+
+@subsection When to use
+
+Use @code{file_read} only when you know the exact name of a file you want
+to read.  Do @emph{not} use it to list a directory --- the planner
+disambiguates this in a critical rule: use @code{command} with
+@code{cmd: "ls"} to list directory contents.
+
+@subsection Example plan step
+
+@example
+@{
+  "id": "step_0",
+  "description": "read README.md",
+  "tool": "file_read",
+  "args": @{ "path": "README.md" @}
+@}
+@end example
+
+
+@node command
+@section @code{command}
+@cindex command tool
+@cindex sandbox, command execution
+
+Executes a shell command inside the @code{Sandbox}.  This is the most
+general-purpose tool and covers all shell operations that the other
+specialised tools do not address: running test suites, querying git,
+searching files with @command{grep}, checking running processes, and so on.
+
+@subsection Arguments
+
+@table @code
+@item cmd
+@emph{Required.}  A shell command string.  The sandbox splits it with
+@code{shlex.split()} --- shell metacharacters (@code{&&}, @code{|},
+@code{>}) are @emph{not} interpreted.  If you need a pipeline, write the
+command as a single string using a real shell: @code{"sh -c 'grep foo bar | wc -l'"}.
+@end table
+
+@subsection Returns
+
+@example
+@{
+  "stdout": "<command stdout>",
+  "stderr": "<command stderr>",
+  "returncode": <int>
+@}
+@end example
+
+@subsection Constraints
+
+@itemize
+@item
+The command must start with a prefix listed in @file{harmless_commands.json}
+or @file{powerful_commands.json}.  Commands that do not match any prefix
+are rejected by the @code{SafetyEngine} before the step runs.
+
+@item
+The @code{Sandbox} hard-blocks @code{rm -rf /}, @code{rm -rf *},
+@code{shutdown}, @code{reboot}, and the fork bomb regardless of the policy
+files.
+
+@item
+Commands time out after 10 seconds.  Long-running commands (compilation,
+large test suites) may need to be broken into smaller steps or the timeout
+increased by editing @file{agent/sandbox.py}.
+@end itemize
+
+@subsection Example plan steps
+
+@example
+@r{# List files}
+@{ "tool": "command", "args": @{ "cmd": "ls -la" @} @}
+
+@r{# Run the test suite}
+@{ "tool": "command", "args": @{ "cmd": "pytest -q" @} @}
+
+@r{# Search for a function name}
+@{ "tool": "command", "args": @{ "cmd": "grep -rn 'def run' agent/" @} @}
+@end example
+
+
+@node patch
+@section @code{patch}
+@cindex patch tool
+@cindex unified diff
+
+Applies a unified diff to an existing file.  Use this instead of
+@code{file_write} when only a few lines need to change --- the diff is
+smaller than the full file, which saves tokens and is less likely to
+introduce accidental changes.
+
+@subsection Arguments
+
+@table @code
+@item patch
+@emph{Required.}  A unified diff string as produced by @command{diff -u}
+or @command{git diff}.  Must include @samp{---} and @samp{+++} header
+lines that identify the target file.
+@end table
+
+@subsection Returns
+
+On success:
+@example
+@{ "stdout": "Applied patch to <file>", "stderr": "", "returncode": 0 @}
+@end example
+
+On failure:
+@example
+@{ "stdout": "", "stderr": "PatchTool error: ...", "returncode": 1 @}
+@end example
+
+@subsection Example plan step
+
+@example
+@{
+  "id": "step_0",
+  "description": "change greeting to Spanish",
+  "tool": "patch",
+  "args": @{
+    "patch": "--- a/hello.py\n+++ b/hello.py\n@@ -1 +1 @@\n-print('Hello, world')\n+print('Hola, mundo')\n"
+  @}
+@}
+@end example
+
+@subsection Limitations
+
+The built-in patcher handles simple line-level changes.  For complex diffs
+(large hunks, binary files, renames), use a @code{command} step to invoke
+the system @command{patch} utility instead.
+
+
+@node web_search
+@section @code{web_search}
+@cindex web_search tool
+@cindex DuckDuckGo
+
+Queries DuckDuckGo Lite and returns up to five results as a JSON array.
+
+@strong{This tool is disabled by default.}  Set @env{WEB_SEARCH_ENABLED=1}
+before running Codebud to enable it.  When disabled, the tool's description
+in the planner prompt is replaced with a notice so the planner knows not
+to use it.
+
+@subsection Arguments
+
+@table @code
+@item query
+@emph{Required.}  A search query string.
+@end table
+
+@subsection Returns
+
+On success:
+@example
+@{
+  "stdout": "[
+    @{\"title\": \"...\", \"url\": \"...\", \"snippet\": \"...\"@},
+    ...
+  ]",
+  "stderr": "",
+  "returncode": 0
+@}
+@end example
+
+On failure or when disabled:
+@example
+@{ "stdout": "", "stderr": "Web search is disabled...", "returncode": 1 @}
+@end example
+
+@subsection Example plan step
+
+@example
+@{
+  "id": "step_0",
+  "description": "search for Python async patterns",
+  "tool": "web_search",
+  "args": @{ "query": "Python async await best practices 2024" @}
+@}
+@end example
+
+@subsection Privacy note
+
+Queries are sent to @code{https://lite.duckduckgo.com/lite/} over HTTPS.
+This is the only network call Codebud makes that goes outside your machine
+(apart from Ollama on a remote host).
+
+
+@node embed
+@section @code{embed}
+@cindex embed tool
+@cindex embeddings
+
+Generates a floating-point embedding vector for a piece of text using the
+Ollama embedding endpoint.  Falls back to a deterministic stub when Ollama
+is unreachable (so the tool still works in tests and offline scenarios).
+
+@subsection Arguments
+
+@table @code
+@item text
+@emph{Required.}  The text to embed.
+@end table
+
+@subsection Returns
+
+On success:
+@example
+@{ "stdout": "[0.12, -0.34, ...]", "stderr": "", "returncode": 0 @}
+@end example
+
+The @code{stdout} value is a JSON array of floats.
+
+@subsection Environment variables
+
+@table @env
+@item EMBED_MODEL
+The Ollama model to use for embeddings.  Defaults to @env{OLLAMA_MODEL}.
+@item OLLAMA_BASE_URL
+The Ollama server.  Defaults to @code{http://localhost:11434}.
+@end table
+
+@subsection When to use
+
+Use @code{embed} when you want to store a semantic representation of a
+piece of code or text in the embedding index (@pxref{search_embeddings}).
+The planner rarely proposes this tool directly; it is more commonly called
+programmatically when building an index.
+
+
+@node search_embeddings
+@section @code{search_embeddings}
+@cindex search_embeddings tool
+@cindex semantic search
+
+Embeds the query, loads @file{data/embeddings/index.json}, computes cosine
+similarity against every stored entry, and returns the top-@var{k} matches.
+
+@subsection Arguments
+
+@table @code
+@item query
+@emph{Required.}  A natural-language query.
+
+@item k
+@emph{Optional.}  Number of results to return.  Default: @code{5}.
+@end table
+
+@subsection Returns
+
+On success:
+@example
+@{
+  "stdout": "[
+    @{\"text\": \"...\", \"score\": 0.87@},
+    ...
+  ]",
+  "stderr": "",
+  "returncode": 0
+@}
+@end example
+
+@subsection Dimension mismatch
+
+If the index was built with a different model (e.g.@: the stub's 16-dimensional
+vectors vs.@: Ollama's 2048-dimensional vectors), cosine similarity returns
+@code{0.0} for all comparisons and the search result is meaningless.
+Clear the index to fix this:
+
+@example
+echo "[]" > data/embeddings/index.json
+@end example
+
+Then re-embed your content.  @xref{Embedding Dimension Mismatch}.

@@ -1,8 +1,324 @@
 @node Development
 @chapter Development
 @cindex development
+@cindex contributing
 
-@strong{This chapter is a stub and will be expanded in a future session.}
+This chapter is for developers who want to modify Codebud: run the test
+suite, add a new tool, tune the planner prompt, or understand the
+conventions used throughout the codebase.
 
-This chapter will cover running the test suite, adding new tools, iterating
-on the planner prompt, and contributing to the project.
+@menu
+* Test Suite::                  Running and understanding the tests.
+* Code Style::                  Ruff configuration and formatting.
+* Adding a Tool::               The five-step tool-addition checklist.
+* Tuning the Planner Prompt::   Improving JSON reliability.
+* Adding a Safety Rule::        Expanding or restricting what runs.
+* Project Conventions::         Naming, imports, type hints, comments.
+@end menu
+
+
+@node Test Suite
+@section Test Suite
+@cindex test suite
+@cindex pytest
+
+@subsection Running the tests
+
+@example
+make test          @r{# run all tests (quiet)}
+make check         @r{# alias for test}
+make coverage      @r{# tests + branch coverage → htmlcov/}
+@end example
+
+Or invoke pytest directly for a single test:
+
+@example
+pytest tests/test_planner.py::TestRetryLogic::test_prose_first_then_valid_json_retry -v
+@end example
+
+All tests pass without a running Ollama server.  Tests that would require
+network access use @code{unittest.mock.patch} to replace @code{call_llm}.
+
+@subsection Test layout
+
+@example
+tests/
+├── test_cli.py              21 tests — subcommand routing, doctor,
+│                            display, error formatter
+├── test_llm_stub.py         LLM stub: Ollama path, OpenAI path, fallback
+├── test_planner.py          15 tests — prompt content, retry logic,
+│                            step validation
+└── test_openclaw_skill.py   10 tests — SKILL.md content, binary
+                             availability, openclaw integration
+@end example
+
+@subsection Test conventions
+
+@itemize
+@item
+@strong{No live network.}  All LLM calls are mocked with
+@code{patch("agent.planner.call_llm", ...)} or equivalent.
+
+@item
+@strong{No live Ollama required.}  @code{test_llm_stub.py} patches
+@code{requests.get} and @code{requests.post} to simulate server responses.
+
+@item
+@strong{Fixtures are local.}  Helper factories (@code{_make_registry()},
+@code{_make_safety()}, @code{_good_plan()}) are defined at the top of each
+test file, not in a shared @file{conftest.py}.
+
+@item
+@strong{Class-per-concern.}  Tests are grouped into classes
+(@code{TestPromptContent}, @code{TestRetryLogic}, @code{TestValidation})
+for readability without requiring the overhead of @code{unittest.TestCase}.
+@end itemize
+
+
+@node Code Style
+@section Code Style
+@cindex ruff
+@cindex code style
+@cindex PEP 8
+
+Code style is enforced by @command{ruff}.  The configuration lives in
+@file{pyproject.toml} under @code{[tool.ruff.lint]}:
+
+@example
+make lint      @r{# check for style violations}
+make format    @r{# auto-format + auto-fix (safe fixes only)}
+@end example
+
+@strong{Active rule sets:}
+
+@table @code
+@item E, W
+@command{pycodestyle} errors and warnings.
+
+@item F
+@command{pyflakes} (unused imports, undefined names).
+
+@item I
+@command{isort} (import ordering: stdlib → third-party → first-party).
+
+@item UP
+@command{pyupgrade} (replace deprecated @code{typing.Dict}/List/Tuple etc.@:
+with built-in equivalents for Python @geq{}3.10).
+
+@item B
+@command{flake8-bugbear} (@code{zip(strict=True)}, ambiguous variable
+names, etc.).
+@end table
+
+Line length is 100 characters.  @code{E501} (line-too-long) is suppressed
+because @command{ruff format} handles wrapping.
+
+Type annotations use built-in generics (@code{dict}, @code{list},
+@code{tuple}) rather than @code{typing.Dict} etc., and the
+@code{X | None} union syntax instead of @code{Optional[X]}.  Both are
+available from Python 3.10 onward, which is the minimum supported version.
+
+
+@node Adding a Tool
+@section Adding a Tool
+@cindex adding a tool
+
+Follow this five-step checklist to add a new tool.
+
+@enumerate
+@item
+@strong{Create the tool class.}  Add a new file (or a class to an existing
+file) under @file{agent/tools/}.  The class must have:
+
+@example
+class MyTool:
+    description = "One sentence for the planner prompt."
+    usage_hint  = (
+        "When to use me and what args are required. "
+        'Required args: "foo" (str), "bar" (int).'
+    )
+
+    def run(self, args: dict[str, Any]) -> dict[str, Any]:
+        foo = args.get("foo")
+        if not foo:
+            return @{"stdout": "", "stderr": "Missing: foo", "returncode": 1@}
+        # ... do work ...
+        return @{"stdout": result, "stderr": "", "returncode": 0@}
+@end example
+
+@item
+@strong{Register it.}  In @file{agent/tools/tool_registry.py},
+add an import and a @code{_register} call:
+
+@example
+from .my_module import MyTool
+# ... inside __init__ ...
+self._register("my_tool", MyTool())
+@end example
+
+@item
+@strong{Add to the safety policy} (if the tool runs shell commands).
+Edit @file{config/harmless_commands.json} or
+@file{config/powerful_commands.json} to whitelist any command prefixes
+the tool produces.
+
+@item
+@strong{Write tests.}  Add a test class to the appropriate file in
+@file{tests/}.  At minimum:
+
+@itemize
+@item
+Test that the tool returns @code{returncode=0} and the expected
+@code{stdout} on valid input.
+
+@item
+Test that it returns @code{returncode=1} when required args are missing.
+@end itemize
+
+@item
+@strong{Add a few-shot example} to @code{LLMPlanner._FEW_SHOT_EXAMPLES}
+in @file{agent/planner.py} if the new tool represents a common pattern.
+Without an example, the planner will rarely use it.
+@end enumerate
+
+@subsection Checklist summary
+
+@example
+[ ] agent/tools/my_module.py     — class with description, usage_hint, run()
+[ ] agent/tools/tool_registry.py — registered with _register()
+[ ] config/harmless_commands.json — updated if needed
+[ ] tests/                       — new test cases pass
+[ ] agent/planner.py             — few-shot example added
+@end example
+
+
+@node Tuning the Planner Prompt
+@section Tuning the Planner Prompt
+@cindex planner prompt, tuning
+@cindex few-shot examples
+
+The planner prompt is assembled in @code{LLMPlanner._build_prompt()} in
+@file{agent/planner.py}.  The most effective ways to improve JSON
+reliability are:
+
+@table @strong
+@item Add or refine few-shot examples
+The class attribute @code{_FEW_SHOT_EXAMPLES} contains six worked examples.
+If the model consistently picks the wrong tool for a specific pattern,
+add an example that shows the correct choice.  The format is:
+
+@example
+Example N --- <short description>:
+User: "<user message>"
+Response:
+@{"status": "ok", "plan": [...]@}
+@end example
+
+@item Add a CRITICAL RULE
+The prompt has a numbered @samp{CRITICAL RULES} section at the top.
+Add a rule when the model makes a systematic mistake.  For example, rule 3
+was added because the 3B model repeatedly used @code{file_read} with
+@code{path: "."} instead of @code{command} with @code{cmd: "ls"}.
+
+@item Improve usage_hint text
+Each tool class has a @code{usage_hint} attribute.  @code{ToolRegistry.describe_tools()}
+includes it in the prompt under the tool's name.  Make the hint concrete:
+say what the required args are and give a one-line @code{@{"arg": "value"@}}
+example.
+
+@item Test with a fixed battery
+After any prompt change, run the five standard requests from Phase E of the
+development plan:
+
+@example
+codebud plan "list files in current directory"
+codebud plan "read README.md and summarize it"
+codebud plan "run the tests and tell me which ones fail"
+codebud plan "create hello.py that prints Hello, world"
+codebud plan "refactor agent/planner.py to add a docstring at the top"
+@end example
+
+The @option{--json} flag lets you inspect the raw plan for each.  Track
+how many plans are correct to measure whether the change helped.
+@end table
+
+
+@node Adding a Safety Rule
+@section Adding a Safety Rule
+@cindex safety rules, adding
+
+@subsection Allow a new command
+
+Edit @file{config/harmless_commands.json} to add a prefix:
+
+@example
+[
+  "echo", "cat", "ls", "pwd", "whoami", "python", "python3",
+  "pytest",
+  "git log", "git status", "git diff"
+]
+@end example
+
+Save the file.  The change takes effect on the next @command{codebud run}
+invocation without restarting anything.
+
+@subsection Restrict a command
+
+Remove the prefix from the JSON file.  The @code{SafetyEngine} will reject
+any plan step whose @code{cmd} starts with that prefix.
+
+@subsection Add a hard block in the Sandbox
+
+Hard blocks cannot be added via config files; they must be edited directly
+in @file{agent/sandbox.py}:
+
+@example
+dangerous_patterns = [
+    "rm -rf /",
+    "rm -rf *",
+    "shutdown",
+    "reboot",
+    ":()@{:|:&@};:",
+    "dd if=/dev/zero",     @r{← new entry}
+]
+@end example
+
+This pattern is checked as a substring anywhere in the command string.
+
+
+@node Project Conventions
+@section Project Conventions
+@cindex conventions
+@cindex naming conventions
+
+@table @strong
+@item Virtual environment
+Always @file{.venv/} (not @file{venv/}).  Created by @command{make venv}.
+
+@item Editable install
+Use @command{make install-dev} (which runs @code{pip install -e ".[dev]"}).
+This places the @command{codebud} binary in @file{.venv/bin/codebud} and
+makes both @code{agent} and @code{run_agent} importable without
+@code{PYTHONPATH} hacks.
+
+@item No comments by default
+Comments are reserved for non-obvious constraints or workarounds.  Code
+that reads naturally from its identifiers should have no comment.
+
+@item No @code{typing.Dict}/List/Optional
+Use built-in generics: @code{dict[str, Any]}, @code{list[str]},
+@code{X | None}.  These are available in Python 3.10+.
+
+@item Tool contract
+Every tool @code{run()} method returns exactly:
+@code{@{"stdout": str, "stderr": str, "returncode": int@}}.  Never raise
+an exception from @code{run()} --- catch and return @code{returncode=1}.
+
+@item Commit style
+GNU-style: short subject line, blank line, body paragraphs.  One commit
+per tested step.  No @code{Co-Authored-By} trailer.
+
+@item Tests first
+Write at least one test before adding a new feature.  All tests must pass
+without a live Ollama server.
+@end table
