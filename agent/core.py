@@ -24,7 +24,7 @@ This file contains NO UI logic and NO OpenClaw logic.
 It is purely the internal agent brain.
 """
 
-from typing import Dict, Any
+from typing import Callable, Dict, Any, Optional
 
 from .planner import LLMPlanner
 from .executor import Executor
@@ -63,19 +63,19 @@ class AgentCore:
     # Public API
     # ----------------------------------------------------------------------
 
-    def handle_user_message(self, message: str) -> Dict[str, Any]:
-        """
-        Called when the user sends a message.
+    def handle_user_message(
+        self,
+        message: str,
+        on_chunk: Optional[Callable[[str], None]] = None,
+    ) -> Dict[str, Any]:
+        """Called when the user sends a message. Returns a plan or plan_error.
 
-        Steps:
-        1. Store the message for regeneration
-        2. Ask the LLM planner to generate a plan
-        3. Validate the plan
-        4. Return the plan or a plan_error
+        ``on_chunk`` is forwarded to the LLM backend to drive a live progress
+        indicator in the CLI without coupling display logic to this class.
         """
         self.last_user_message = message
 
-        plan_output = self.planner.generate_plan(message)
+        plan_output = self.planner.generate_plan(message, on_chunk=on_chunk)
 
         # If planner failed, return error
         if plan_output.get("status") != "ok":

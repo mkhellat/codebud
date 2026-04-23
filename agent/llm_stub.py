@@ -24,6 +24,7 @@ operations are performed unless a real model is requested.
 
 import os
 import logging
+from typing import Callable, Optional
 
 import requests
 
@@ -33,7 +34,11 @@ logger = logging.getLogger(__name__)
 _OLLAMA_BASE = os.environ.get("OLLAMA_BASE_URL", "http://localhost:11434")
 
 
-def call_llm(prompt: str, timeout: float = 600.0) -> str:
+def call_llm(
+    prompt: str,
+    timeout: float = 600.0,
+    on_chunk: Optional[Callable[[str], None]] = None,
+) -> str:
     """Send ``prompt`` to the configured LLM and return the raw text output.
 
     Priority order:
@@ -46,11 +51,15 @@ def call_llm(prompt: str, timeout: float = 600.0) -> str:
     hardware prefill alone can take several minutes for a 300-token prompt, so
     the default is generous.  The Ollama call uses streaming internally so the
     HTTP read timeout never fires mid-generation.
+
+    ``on_chunk`` is an optional callback that receives each text fragment as
+    it arrives from the model.  The CLI uses this to drive the progress
+    indicator without coupling the display code to this module.
     """
 
     ollama_model = os.environ.get("OLLAMA_MODEL")
     if ollama_model and _ollama_available():
-        return _call_ollama(ollama_model, prompt, timeout)
+        return _call_ollama(ollama_model, prompt, timeout, on_chunk=on_chunk)
 
     if os.environ.get("OPENAI_API_KEY"):
         try:
@@ -86,13 +95,21 @@ def _ollama_available() -> bool:
         return False
 
 
-def _call_ollama(model: str, prompt: str, timeout: float) -> str:
+def _call_ollama(
+    model: str,
+    prompt: str,
+    timeout: float,
+    on_chunk: Optional[Callable[[str], None]] = None,
+) -> str:
     """Stream from the Ollama generate endpoint and return the full text.
 
     Using stream=True means the HTTP connection receives a token at a time,
     so the read timeout never fires during the long prefill phase on CPU-only
     hardware.  We use a generous connect timeout (10 s) and set the read
     timeout to the caller-supplied total ``timeout``.
+
+    ``on_chunk`` is called with each response fragment so callers can drive
+    a live progress indicator without blocking.
     """
     import json as _json
     import time as _time
@@ -119,7 +136,10 @@ def _call_ollama(model: str, prompt: str, timeout: float) -> str:
             if not line:
                 continue
             chunk = _json.loads(line)
-            chunks.append(chunk.get("response", ""))
+            text = chunk.get("response", "")
+            chunks.append(text)
+            if on_chunk is not None and text:
+                on_chunk(text)
             if chunk.get("done"):
                 break
         return "".join(chunks)

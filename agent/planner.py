@@ -29,11 +29,8 @@ The planner NEVER exposes chain-of-thought. It only returns the final plan.
 """
 
 import json
-from typing import Dict, Any
+from typing import Callable, Dict, Any, Optional
 
-# NOTE:
-# In your real implementation, replace this with your actual LLM call.
-# For now, we simulate an LLM call with a placeholder.
 from .llm_stub import call_llm
 
 
@@ -54,20 +51,20 @@ class LLMPlanner:
     # Public API
     # ------------------------------------------------------------------
 
-    def generate_plan(self, user_message: str) -> Dict[str, Any]:
-        """
-        Generate a plan using the LLM.
+    def generate_plan(
+        self,
+        user_message: str,
+        on_chunk: Optional[Callable[[str], None]] = None,
+    ) -> Dict[str, Any]:
+        """Generate a plan using the LLM.
 
-        Steps:
-        1. Build prompt
-        2. Call LLM
-        3. Parse JSON
-        4. Validate structure
+        ``on_chunk`` is forwarded to the LLM backend so callers can drive a
+        live progress indicator.
         """
 
         prompt = self._build_prompt(user_message)
 
-        llm_output = call_llm(prompt)
+        llm_output = call_llm(prompt, on_chunk=on_chunk)
 
         if not llm_output:
             return {
