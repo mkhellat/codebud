@@ -22,7 +22,10 @@ dev = [
 codebud = "run_agent:main"
 
 [tool.setuptools.packages.find]
-include = ["agent*", "openclaw*"]
+include = ["agent*"]
+
+[tool.setuptools]
+py-modules = ["run_agent"]
 
 [build-system]
 requires = ["setuptools"]
