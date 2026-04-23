@@ -58,38 +58,44 @@ class LLMPlanner:
     ) -> Dict[str, Any]:
         """Generate a plan using the LLM.
 
-        ``on_chunk`` is forwarded to the LLM backend so callers can drive a
-        live progress indicator.
+        Makes one primary attempt and, if parsing fails, one automatic retry
+        with a stricter JSON-only prompt.  ``on_chunk`` is forwarded to the
+        LLM backend to drive a live progress indicator.
         """
 
         prompt = self._build_prompt(user_message)
+        result = self._attempt(prompt, on_chunk=on_chunk)
+        if result is not None:
+            return result
 
+        # First attempt failed to produce valid JSON — retry once with a
+        # minimal no-preamble prompt to overcome fence-wrapping or prose.
+        retry_prompt = self._build_retry_prompt(user_message)
+        result = self._attempt(retry_prompt, on_chunk=on_chunk)
+        if result is not None:
+            return result
+
+        return {"status": "plan_error", "error": "LLM returned invalid JSON"}
+
+    def _attempt(
+        self,
+        prompt: str,
+        on_chunk: Optional[Callable[[str], None]] = None,
+    ) -> Optional[Dict[str, Any]]:
+        """Call the LLM once and return a valid plan dict, or None on failure."""
         llm_output = call_llm(prompt, on_chunk=on_chunk)
-
         if not llm_output:
-            return {
-                "status": "plan_error",
-                "error": "LLM returned empty output"
-            }
+            return {"status": "plan_error", "error": "LLM returned empty output"}
 
-        # Strip markdown code fences that some models add around JSON output
         llm_output = self._strip_code_fence(llm_output)
 
-        # Parse JSON
         try:
             plan_json = json.loads(llm_output)
         except Exception:
-            return {
-                "status": "plan_error",
-                "error": "LLM returned invalid JSON"
-            }
+            return None  # signal caller to retry
 
-        # Validate structure
         if not self._validate_plan_structure(plan_json):
-            return {
-                "status": "plan_error",
-                "error": "LLM returned malformed plan"
-            }
+            return {"status": "plan_error", "error": "LLM returned malformed plan"}
 
         return plan_json
 
@@ -97,58 +103,90 @@ class LLMPlanner:
     # Prompt Construction
     # ------------------------------------------------------------------
 
+    # ------------------------------------------------------------------
+    # Prompt Construction
+    # ------------------------------------------------------------------
+
+    _FEW_SHOT_EXAMPLES = '''\
+EXAMPLES (study these carefully before responding):
+
+Example 1 — list files in the current directory:
+User: "list the files in the current directory"
+Response:
+{"status": "ok", "plan": [{"id": "step_0", "description": "list files", "tool": "command", "args": {"cmd": "ls -la"}}]}
+
+Example 2 — read a specific file:
+User: "show me the contents of README.md"
+Response:
+{"status": "ok", "plan": [{"id": "step_0", "description": "read README.md", "tool": "file_read", "args": {"path": "README.md"}}]}
+
+Example 3 — run the test suite:
+User: "run the tests"
+Response:
+{"status": "ok", "plan": [{"id": "step_0", "description": "run pytest", "tool": "command", "args": {"cmd": "pytest -q"}}]}
+
+Example 4 — create a new file:
+User: "create a file called hello.py that prints Hello, world"
+Response:
+{"status": "ok", "plan": [{"id": "step_0", "description": "write hello.py", "tool": "file_write", "args": {"path": "hello.py", "content": "print('Hello, world')\\n"}}]}
+
+Example 5 — multi-step task:
+User: "read config.json and then run the tests"
+Response:
+{"status": "ok", "plan": [{"id": "step_0", "description": "read config.json", "tool": "file_read", "args": {"path": "config.json"}}, {"id": "step_1", "description": "run pytest", "tool": "command", "args": {"cmd": "pytest -q"}}]}
+
+Example 6 — cannot help:
+User: "order me a pizza"
+Response:
+{"status": "plan_error", "error": "This request cannot be fulfilled with the available tools."}
+'''
+
     def _build_prompt(self, user_message: str) -> str:
-        """
-        Build the LLM prompt describing:
-        - tools
-        - JSON format
-        - safety rules
-        - user message
-        """
+        """Build the full planning prompt with tools, rules, examples, and request."""
 
         tool_descriptions = self.tool_registry.describe_tools()
-
         safety_rules = self.safety_engine.describe_rules()
 
-        prompt = f"""
-You are a planning agent. Your job is to convert the user's message into a
-linear plan of steps. Each step uses exactly one tool.
+        return f"""\
+You are a precise coding-agent planner. Your ONLY job is to output a JSON plan.
 
-TOOLS:
+CRITICAL RULES:
+1. Output ONLY valid JSON. No prose, no markdown, no code fences, no explanation.
+2. Every step must use one of the tools listed below.
+3. Use "command" (not "file_read") to list directory contents, search files, or run programs.
+4. "file_read" is only for reading a specific named file.
+5. Step ids must be sequential: "step_0", "step_1", ...
+
+AVAILABLE TOOLS:
 {tool_descriptions}
 
-SAFETY RULES:
+SAFETY RULES (commands violating these will be rejected):
 {safety_rules}
 
-RESPONSE FORMAT (JSON ONLY, NO EXTRA TEXT):
-{{
-  "status": "ok",
-  "plan": [
-    {{
-      "id": "step_0",
-      "description": "Human-readable description",
-      "tool": "tool_name",
-      "args": {{ ... }}
-    }}
-  ]
-}}
+RESPONSE FORMAT:
+{{"status": "ok", "plan": [{{"id": "step_0", "description": "...", "tool": "...", "args": {{...}}}}]}}
 
-If you cannot produce a valid plan, respond with:
-{{
-  "status": "plan_error",
-  "error": "Explanation"
-}}
+On failure:
+{{"status": "plan_error", "error": "reason"}}
 
-USER MESSAGE:
-{user_message}
+{self._FEW_SHOT_EXAMPLES}
+Now respond to this request. Output JSON only.
 
-Remember:
-- DO NOT include chain-of-thought.
-- DO NOT include explanations.
-- ONLY return valid JSON.
+USER REQUEST: {user_message}
 """
 
-        return prompt
+    def _build_retry_prompt(self, user_message: str) -> str:
+        """Minimal retry prompt used when the first attempt returned non-JSON."""
+        tool_names = list(self.tool_registry.tools.keys())
+        return f"""\
+OUTPUT ONLY VALID JSON. No markdown. No code fences. No text before or after the JSON.
+
+Tools available: {tool_names}
+
+Produce a plan for: {user_message}
+
+Format: {{"status":"ok","plan":[{{"id":"step_0","description":"...","tool":"...","args":{{...}}}}]}}
+"""
 
     # ------------------------------------------------------------------
     # Validation

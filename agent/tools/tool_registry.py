@@ -58,13 +58,14 @@ class ToolRegistry:
         return name in self.tools
 
     def describe_tools(self) -> str:
-        """
-        Return a human-readable description of all tools for the planner prompt.
-        """
+        """Return a structured description of all tools for the planner prompt."""
         lines = []
         for name, tool in self.tools.items():
             desc = getattr(tool, "description", "(no description)")
+            hint = getattr(tool, "usage_hint", "")
             lines.append(f"- {name}: {desc}")
+            if hint:
+                lines.append(f"  When to use: {hint}")
         return "\n".join(lines)
 
     # ------------------------------------------------------------------

@@ -33,6 +33,11 @@ class FileWriteTool:
     """
 
     description = "Create or overwrite a file with the given content."
+    usage_hint = (
+        'Use when you need to create a new file or replace a file\'s entire content. '
+        'Required args: "path" (string), "content" (string). '
+        'Example: {"path": "hello.py", "content": "print(\'Hello, world\')\\n"}'
+    )
 
     def run(self, args: Dict[str, Any]) -> Dict[str, Any]:
         path = args.get("path")
@@ -75,6 +80,12 @@ class FileReadTool:
     """
 
     description = "Read a file and return its content."
+    usage_hint = (
+        'Use when you need to read the contents of a SPECIFIC named file. '
+        'Do NOT use to list directory contents — use "command" with "cmd": "ls" for that. '
+        'Required args: "path" (string, must be a file path, not a directory). '
+        'Example: {"path": "README.md"}'
+    )
 
     def run(self, args: Dict[str, Any]) -> Dict[str, Any]:
         path = args.get("path")

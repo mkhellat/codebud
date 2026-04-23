@@ -103,6 +103,10 @@ class EmbedTool:
     """Generate an embedding vector for text using Ollama (or stub fallback)."""
 
     description = "Generate an embedding vector for text."
+    usage_hint = (
+        'Use to embed a piece of text so it can be stored and later searched. '
+        'Required args: "text" (string). Returns a vector stored in the embedding index.'
+    )
 
     def run(self, args: Dict[str, Any]) -> Dict[str, Any]:
         text = args.get("text")
@@ -117,6 +121,10 @@ class EmbeddingSearchTool:
     """Search stored embeddings using cosine similarity."""
 
     description = "Search stored embeddings and return top-k matches."
+    usage_hint = (
+        'Use to find previously embedded content that is semantically similar to a query. '
+        'Required args: "query" (string). Optional: "top_k" (int, default 5).'
+    )
 
     def __init__(self):
         self._ensure_storage()

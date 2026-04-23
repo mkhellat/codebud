@@ -30,6 +30,11 @@ class CommandTool:
     """
 
     description = "Execute a shell command inside the sandbox."
+    usage_hint = (
+        'Use for any shell operation: listing files, running tests, searching code, '
+        'checking git status, etc. Required args: "cmd" (string, a shell command). '
+        'Examples: {"cmd": "ls -la"}, {"cmd": "pytest -q"}, {"cmd": "grep -r TODO ."}'
+    )
 
     def __init__(self, sandbox):
         self.sandbox = sandbox
