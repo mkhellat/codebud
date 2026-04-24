@@ -62,7 +62,7 @@ the plan before committing to execution.  The @command{chat} subcommand
 repeats all four stages across multiple turns using a single persistent
 agent instance.
 
-@strong{Note on timing:} On CPU-only hardware (for example, an Intel
+@strong{Timing:} On CPU-only hardware (for example, an Intel
 i7-8550U laptop), the planning stage takes approximately 4--6 minutes
 for the recommended 3B model.  This is normal.  Codebud shows a live
 progress indicator so you can see that it is working.
