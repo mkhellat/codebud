@@ -97,11 +97,7 @@ class WebSearchTool:
         if _ENABLED
         else "Web search (currently disabled — set WEB_SEARCH_ENABLED=1 to enable)."
     )
-    usage_hint = (
-        "Use to look up current information on the web. "
-        "Only available when WEB_SEARCH_ENABLED=1. "
-        'Required args: "query" (string).'
-    )
+    usage_hint = 'Required: "query" (str). Only when WEB_SEARCH_ENABLED=1.'
 
     def run(self, args: dict[str, Any]) -> dict[str, Any]:
         if not _ENABLED:

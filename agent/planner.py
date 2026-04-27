@@ -109,36 +109,26 @@ class LLMPlanner:
     # ------------------------------------------------------------------
 
     _FEW_SHOT_EXAMPLES = """\
-EXAMPLES (study these carefully before responding):
+EXAMPLES:
 
-Example 1 — list files in the current directory:
+Example 1:
 User: "list the files in the current directory"
-Response:
 {"status": "ok", "plan": [{"id": "step_0", "description": "list files", "tool": "command", "args": {"cmd": "ls -la"}}]}
 
-Example 2 — read a specific file:
-User: "show me the contents of README.md"
-Response:
-{"status": "ok", "plan": [{"id": "step_0", "description": "read README.md", "tool": "file_read", "args": {"path": "README.md"}}]}
-
-Example 3 — run the test suite:
-User: "run the tests"
-Response:
+Example 2:
+User: "run the tests and tell me which ones fail"
 {"status": "ok", "plan": [{"id": "step_0", "description": "run pytest", "tool": "command", "args": {"cmd": "pytest -q"}}]}
 
-Example 4 — create a new file:
+Example 3:
 User: "create a file called hello.py that prints Hello, world"
-Response:
 {"status": "ok", "plan": [{"id": "step_0", "description": "write hello.py", "tool": "file_write", "args": {"path": "hello.py", "content": "print('Hello, world')\\n"}}]}
 
-Example 5 — multi-step task:
-User: "read config.json and then run the tests"
-Response:
-{"status": "ok", "plan": [{"id": "step_0", "description": "read config.json", "tool": "file_read", "args": {"path": "config.json"}}, {"id": "step_1", "description": "run pytest", "tool": "command", "args": {"cmd": "pytest -q"}}]}
+Example 4:
+User: "add a docstring at the top of agent/planner.py"
+{"status": "ok", "plan": [{"id": "step_0", "description": "read planner.py", "tool": "file_read", "args": {"path": "agent/planner.py"}}, {"id": "step_1", "description": "patch in docstring", "tool": "patch", "args": {"patch": "--- a/agent/planner.py\n+++ b/agent/planner.py\n@@ -1,0 +1,2 @@\n+\"\"\"LLM-driven planner.\"\"\"\n+\n"}}]}
 
-Example 6 — cannot help:
+Example 5:
 User: "order me a pizza"
-Response:
 {"status": "plan_error", "error": "This request cannot be fulfilled with the available tools."}
 """
 
@@ -155,8 +145,10 @@ CRITICAL RULES:
 1. Output ONLY valid JSON. No prose, no markdown, no code fences, no explanation.
 2. Every step must use one of the tools listed below.
 3. Use "command" (not "file_read") to list directory contents, search files, or run programs.
-4. "file_read" is only for reading a specific named file.
+4. "file_read" is only for reading a specific named file whose path you already know.
 5. Step ids must be sequential: "step_0", "step_1", ...
+6. To run tests use: {{"tool": "command", "args": {{"cmd": "pytest -q"}}}}
+7. To change a few lines in a file use "patch", not "file_write". Never put shell variables or command substitution inside "file_write" content.
 
 AVAILABLE TOOLS:
 {tool_descriptions}

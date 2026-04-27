@@ -93,6 +93,25 @@ class TestPromptContent:
         # The key disambiguation hint must be present
         assert "list directory" in prompt or "directory contents" in prompt
 
+    def test_critical_rule_pytest(self):
+        """The prompt must show pytest as the way to run tests."""
+        planner = LLMPlanner(_make_registry(), _make_safety())
+        prompt = planner._build_prompt("any request")
+        assert "pytest" in prompt
+
+    def test_critical_rule_no_shell_vars_in_file_write(self):
+        """The prompt must forbid shell variable substitution in file_write content."""
+        planner = LLMPlanner(_make_registry(), _make_safety())
+        prompt = planner._build_prompt("any request")
+        assert "file_write" in prompt
+        assert "shell" in prompt or "command substitution" in prompt or "variables" in prompt
+
+    def test_patch_example_in_prompt(self):
+        """A patch-based example must appear in the few-shot section."""
+        planner = LLMPlanner(_make_registry(), _make_safety())
+        prompt = planner._build_prompt("any request")
+        assert '"tool": "patch"' in prompt or "'tool': 'patch'" in prompt
+
     def test_usage_hints_in_tool_descriptions(self):
         """describe_tools() must include usage_hint lines."""
         registry = _make_registry()

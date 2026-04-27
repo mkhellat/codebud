@@ -34,12 +34,7 @@ class PatchTool:
     """
 
     description = "Apply a unified diff patch to a file."
-    usage_hint = (
-        "Use to make targeted edits to an existing file using a unified diff. "
-        "Prefer this over file_write when you only want to change a few lines. "
-        'Required args: "patch" (string, a standard unified diff with --- / +++ headers). '
-        'Example: {"patch": "--- a/foo.py\\n+++ b/foo.py\\n@@ -1,3 +1,3 @@\\n-old\\n+new\\n"}'
-    )
+    usage_hint = 'Required: "patch" (str, unified diff with --- +++ headers). Prefer over file_write for small edits.'
 
     def run(self, args: dict[str, Any]) -> dict[str, Any]:
         patch_text = args.get("patch")
