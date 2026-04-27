@@ -21,8 +21,12 @@ make format               # ruff format + ruff check --fix
 export OLLAMA_MODEL=qwen2.5-coder:3b-instruct-q4_K_M
 codebud doctor            # verify environment before first run
 codebud run "your task"   # plan + auto-execute
+codebud run -i "your task" # plan + interactive per-step approval (planned)
 codebud plan "your task"  # plan only (add --json for raw JSON output)
-codebud chat              # interactive REPL with per-step approval
+codebud chat              # interactive REPL — continuous conversation with history
+codebud models            # list downloaded Ollama models
+codebud config            # show resolved env-var configuration
+codebud version           # codebud + ollama + python versions
 
 # Distribution
 make dist                 # build sdist + wheel into dist/
@@ -107,9 +111,23 @@ All tools are registered in `ToolRegistry.__init__`. Each tool implements `.run(
 
 After each successful step, `MemoryStore.add_snapshot()` appends a JSON record to `data/memory/entries.json`. The file is loaded on startup so history persists across runs.
 
+### Conversation history (in progress)
+
+`AgentCore` will maintain `self._history: list[dict]` — a rolling window of the
+last N user/assistant turns. Each turn is passed to `LLMPlanner.generate_plan(history=...)`
+and injected into the prompt so the model sees what it said and did before.
+
+Inside `codebud chat`, `/`-prefixed inputs are parsed as local slash commands
+(`/help`, `/history`, `/clear`, `/plan`, `/undo`, `/doctor`, `/model`) and never
+sent to the planner.
+
 ### OpenClaw integration (`openclaw/SKILL.md`)
 
 `make install-skill` copies `openclaw/SKILL.md` to `~/.openclaw/skills/codebud/` and symlinks the `codebud` binary into `BINDIR`. The SKILL.md teaches the OpenClaw browser gateway how to invoke codebud. `AgentCore.regenerate()` is the hook OpenClaw calls to request a fresh plan for the same user message.
+
+OpenClaw is the browser UI layer on top of the same `AgentCore` backbone. Once
+conversation history is solid in the CLI, `openclaw/skill.py` will maintain a
+`session_id → AgentCore` map so each browser session has its own persistent context.
 
 ## Adding a new tool
 

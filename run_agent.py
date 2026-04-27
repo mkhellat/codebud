@@ -133,6 +133,12 @@ def cmd_chat(args):
     )
     from agent.cli.errors import print_error
 
+    try:
+        import readline as _rl  # noqa: F401 — enables arrow-key history and Ctrl+R in input()
+        _rl.parse_and_bind("tab: complete")
+    except ImportError:
+        pass
+
     agent = _make_agent()
     print("Codebud chat — type your request, or 'quit' to exit.\n", file=sys.stderr)
 
