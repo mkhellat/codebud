@@ -24,6 +24,8 @@ operations are performed unless a real model is requested.
 
 import logging
 import os
+import threading
+import time
 from collections.abc import Callable
 
 import requests
@@ -84,6 +86,86 @@ def call_llm(
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
+
+class ModelHeartbeat:
+    """Keeps the Ollama model loaded by pinging it every ``interval`` seconds.
+
+    Ollama unloads a model after it has been idle for its keep_alive window
+    (default 5 minutes).  While a session is active we don't want that to
+    happen between requests, so this class runs a daemon thread that sends a
+    zero-token generate call before each idle-timeout window closes.
+
+    Usage::
+
+        hb = ModelHeartbeat()
+        hb.start()          # begin pinging
+        ...                 # session work
+        hb.stop()           # stop pinging; Ollama will unload on its own schedule
+    """
+
+    def __init__(self, interval: float = 240.0):
+        self._interval = interval  # ping every 4 min (< 5 min Ollama default)
+        self._stop_event = threading.Event()
+        self._thread: threading.Thread | None = None
+
+    def start(self) -> None:
+        model = os.environ.get("OLLAMA_MODEL")
+        if not model or not _ollama_available():
+            return
+        self._stop_event.clear()
+        self._thread = threading.Thread(target=self._loop, daemon=True)
+        self._thread.start()
+
+    def stop(self) -> None:
+        self._stop_event.set()
+        if self._thread is not None:
+            self._thread.join(timeout=5)
+            self._thread = None
+
+    def _loop(self) -> None:
+        while not self._stop_event.wait(timeout=self._interval):
+            self._ping()
+
+    def _ping(self) -> None:
+        model = os.environ.get("OLLAMA_MODEL")
+        if not model:
+            return
+        try:
+            requests.post(
+                f"{_OLLAMA_BASE}/api/generate",
+                json={"model": model, "prompt": "hi", "stream": False, "options": {"num_predict": 2}},
+                timeout=(5, 60),
+            )
+        except Exception:
+            pass  # server went away; AgentCore will surface the error on next real call
+
+
+def prewarm_model() -> None:
+    """Fire a tiny real request in a background daemon thread.
+
+    Call this as early as possible in the session (e.g. in AgentCore.__init__)
+    so the model is loaded into GPU/CPU memory before the user's first message
+    arrives.  The thread is a daemon so it never blocks interpreter exit.
+    """
+    model = os.environ.get("OLLAMA_MODEL")
+    if not model or not _ollama_available():
+        return
+
+    def _warm() -> None:
+        try:
+            logger.debug("Pre-warming model %s", model)
+            requests.post(
+                f"{_OLLAMA_BASE}/api/generate",
+                json={"model": model, "prompt": "hi", "stream": False, "options": {"num_predict": 2}},
+                timeout=(10, 120),
+            )
+            logger.debug("Pre-warmup complete")
+        except Exception as exc:
+            logger.debug("Pre-warmup failed (non-fatal): %s", exc)
+
+    t = threading.Thread(target=_warm, daemon=True, name="codebud-prewarm")
+    t.start()
 
 
 def _ollama_available() -> bool:

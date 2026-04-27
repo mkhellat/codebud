@@ -28,6 +28,7 @@ from collections.abc import Callable
 from typing import Any
 
 from .executor import Executor
+from .llm_stub import ModelHeartbeat, prewarm_model
 from .memory import MemoryStore
 from .planner import LLMPlanner
 from .safety import SafetyEngine
@@ -59,6 +60,20 @@ class AgentCore:
 
         # Store last user message for regeneration
         self.last_user_message = None
+
+        # Start loading the model immediately so it's ready before the first request
+        prewarm_model()
+
+        # Keep the Ollama model loaded for the lifetime of this session
+        self._heartbeat = ModelHeartbeat()
+        self._heartbeat.start()
+
+    def close(self) -> None:
+        """End the session.  Stops the heartbeat so Ollama can unload the model."""
+        self._heartbeat.stop()
+
+    def __del__(self) -> None:
+        self.close()
 
     # ----------------------------------------------------------------------
     # Public API
