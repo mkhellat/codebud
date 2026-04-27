@@ -1,10 +1,20 @@
 [
-    "echo",
-    "cat",
-    "ls",
-    "pwd",
-    "whoami",
-    "python",
-    "python3"
-  ]
-  
+  "echo",
+  "cat",
+  "head",
+  "tail",
+  "ls",
+  "pwd",
+  "whoami",
+  "wc",
+  "find",
+  "diff",
+  "python",
+  "python3",
+  "pytest",
+  "ruff",
+  "git log",
+  "git status",
+  "git diff",
+  "git show"
+]
