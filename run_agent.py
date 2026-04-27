@@ -55,32 +55,35 @@ def cmd_run(args):
     from agent.cli.errors import print_error
 
     agent = _make_agent()
-    prog = ProgressIndicator(no_progress=_no_progress(args))
-    prog.start()
     try:
-        plan = agent.handle_user_message(args.message, on_chunk=prog.on_chunk)
-    finally:
-        prog.stop()
+        prog = ProgressIndicator(no_progress=_no_progress(args))
+        prog.start()
+        try:
+            plan = agent.handle_user_message(args.message, on_chunk=prog.on_chunk)
+        finally:
+            prog.stop()
 
-    if plan.get("status") != "ok":
-        err = plan.get("error", "unknown error")
-        print_plan_error(err)
-        print_error(err, label="Plan error")
-        sys.exit(1)
-
-    print_plan(plan, verbose=args.verbose)
-
-    steps = plan.get("plan", [])
-    for i, step in enumerate(steps, 1):
-        print_step_header(i, step)
-        result = agent.executor.execute_plan({"status": "ok", "plan": [step]})
-        if result.get("status") == "ok":
-            out = result["results"].get(step["id"], {})
-            print_step_result(out, verbose=args.verbose)
-        else:
-            err = str(result)
-            print_error(err, label="Execution error")
+        if plan.get("status") != "ok":
+            err = plan.get("error", "unknown error")
+            print_plan_error(err)
+            print_error(err, label="Plan error")
             sys.exit(1)
+
+        print_plan(plan, verbose=args.verbose)
+
+        steps = plan.get("plan", [])
+        for i, step in enumerate(steps, 1):
+            print_step_header(i, step)
+            result = agent.executor.execute_plan({"status": "ok", "plan": [step]})
+            if result.get("status") == "ok":
+                out = result["results"].get(step["id"], {})
+                print_step_result(out, verbose=args.verbose)
+            else:
+                err = str(result)
+                print_error(err, label="Execution error")
+                sys.exit(1)
+    finally:
+        agent.close()
 
 
 # ---------------------------------------------------------------------------
@@ -93,23 +96,26 @@ def cmd_plan(args):
     from agent.cli.errors import print_error
 
     agent = _make_agent()
-    prog = ProgressIndicator(no_progress=_no_progress(args))
-    prog.start()
     try:
-        plan = agent.handle_user_message(args.message, on_chunk=prog.on_chunk)
+        prog = ProgressIndicator(no_progress=_no_progress(args))
+        prog.start()
+        try:
+            plan = agent.handle_user_message(args.message, on_chunk=prog.on_chunk)
+        finally:
+            prog.stop()
+
+        if plan.get("status") != "ok":
+            err = plan.get("error", "unknown error")
+            print_plan_error(err)
+            print_error(err, label="Plan error")
+            sys.exit(1)
+
+        if args.json:
+            print(json.dumps(plan, indent=2))
+        else:
+            print_plan(plan, verbose=args.verbose)
     finally:
-        prog.stop()
-
-    if plan.get("status") != "ok":
-        err = plan.get("error", "unknown error")
-        print_plan_error(err)
-        print_error(err, label="Plan error")
-        sys.exit(1)
-
-    if args.json:
-        print(json.dumps(plan, indent=2))
-    else:
-        print_plan(plan, verbose=args.verbose)
+        agent.close()
 
 
 # ---------------------------------------------------------------------------
@@ -130,60 +136,62 @@ def cmd_chat(args):
     agent = _make_agent()
     print("Codebud chat — type your request, or 'quit' to exit.\n", file=sys.stderr)
 
-    while True:
-        try:
-            message = input("You: ").strip()
-        except (EOFError, KeyboardInterrupt):
-            print(file=sys.stderr)
-            break
-        if not message or message.lower() in ("quit", "exit", "q"):
-            break
-
-        prog = ProgressIndicator(no_progress=_no_progress(args))
-        prog.start()
-        try:
-            plan = agent.handle_user_message(message, on_chunk=prog.on_chunk)
-        finally:
-            prog.stop()
-
-        if plan.get("status") != "ok":
-            err = plan.get("error", "unknown error")
-            print_plan_error(err)
-            print_error(err, label="Plan error")
-            continue
-
-        print_plan(plan, verbose=args.verbose)
-        steps = plan.get("plan", [])
-
-        for i, step in enumerate(steps, 1):
-            print_step_header(i, step)
-            approval = input(f"  Execute step {i}? [y/N/a(all)/q(quit)] ").strip().lower()
-            if approval == "q":
+    try:
+        while True:
+            try:
+                message = input("You: ").strip()
+            except (EOFError, KeyboardInterrupt):
+                print(file=sys.stderr)
                 break
-            if approval == "a":
-                # Auto-execute remaining steps
-                for j, s in enumerate(steps[i - 1 :], i):
-                    print_step_header(j, s)
-                    result = agent.executor.execute_plan({"status": "ok", "plan": [s]})
-                    if result.get("status") == "ok":
-                        out = result["results"].get(s["id"], {})
-                        print_step_result(out, verbose=args.verbose)
-                    else:
-                        print_error(str(result), label="Execution error")
+            if not message or message.lower() in ("quit", "exit", "q"):
                 break
-            if not approval.startswith("y"):
-                print("  -- skipped", file=sys.stderr)
+
+            prog = ProgressIndicator(no_progress=_no_progress(args))
+            prog.start()
+            try:
+                plan = agent.handle_user_message(message, on_chunk=prog.on_chunk)
+            finally:
+                prog.stop()
+
+            if plan.get("status") != "ok":
+                err = plan.get("error", "unknown error")
+                print_plan_error(err)
+                print_error(err, label="Plan error")
                 continue
 
-            result = agent.executor.execute_plan({"status": "ok", "plan": [step]})
-            if result.get("status") == "ok":
-                out = result["results"].get(step["id"], {})
-                print_step_result(out, verbose=args.verbose)
-            else:
-                print_error(str(result), label="Execution error")
-                break
+            print_plan(plan, verbose=args.verbose)
+            steps = plan.get("plan", [])
 
-        print(file=sys.stderr)
+            for i, step in enumerate(steps, 1):
+                print_step_header(i, step)
+                approval = input(f"  Execute step {i}? [y/N/a(all)/q(quit)] ").strip().lower()
+                if approval == "q":
+                    break
+                if approval == "a":
+                    for j, s in enumerate(steps[i - 1 :], i):
+                        print_step_header(j, s)
+                        result = agent.executor.execute_plan({"status": "ok", "plan": [s]})
+                        if result.get("status") == "ok":
+                            out = result["results"].get(s["id"], {})
+                            print_step_result(out, verbose=args.verbose)
+                        else:
+                            print_error(str(result), label="Execution error")
+                    break
+                if not approval.startswith("y"):
+                    print("  -- skipped", file=sys.stderr)
+                    continue
+
+                result = agent.executor.execute_plan({"status": "ok", "plan": [step]})
+                if result.get("status") == "ok":
+                    out = result["results"].get(step["id"], {})
+                    print_step_result(out, verbose=args.verbose)
+                else:
+                    print_error(str(result), label="Execution error")
+                    break
+
+            print(file=sys.stderr)
+    finally:
+        agent.close()
 
 
 # ---------------------------------------------------------------------------

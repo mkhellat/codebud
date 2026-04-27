@@ -284,6 +284,9 @@ class TestSubcommandRouting:
             def handle_user_message(self, msg, on_chunk=None):
                 return _plan_error()
 
+            def close(self):
+                pass
+
         monkeypatch.setattr("run_agent._make_agent", lambda: FakeAgent())
         rc = self._run_main(["run", "do something"])
         assert rc == 1
@@ -305,6 +308,9 @@ class TestSubcommandRouting:
             def handle_user_message(self, msg, on_chunk=None):
                 ran["msg"] = msg
                 return _good_plan()
+
+            def close(self):
+                pass
 
         monkeypatch.setattr("run_agent._make_agent", lambda: FakeAgent())
         # Suppress progress output
