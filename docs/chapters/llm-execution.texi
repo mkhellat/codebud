@@ -1,0 +1,1416 @@
+@node LLM Execution Lifecycle
+@chapter LLM Execution Lifecycle
+@cindex LLM execution lifecycle
+@cindex model execution
+@cindex inference
+@cindex cold-load
+@cindex prefill
+@cindex generation phase
+
+This chapter explains exactly what happens inside Ollama from the moment
+you press Enter to the moment characters appear on your screen.  It covers
+every phase of a language model call --- loading, tokenizing, prefilling,
+generating, streaming, idling, and unloading --- then walks the same example
+prompt through both a non-thinking model and a thinking model so you can see
+how differently they behave.
+
+No machine-learning background is assumed.  Each concept is introduced from
+first principles, with code snippets that show how Ollama and the model
+libraries implement it.
+
+@menu
+* The Full Picture::                All six phases at a glance.
+* What Lives on Disk::              GGUF files, weights, and the tokenizer.
+* Phase 0 Cold-Load::               Moving model weights from disk into RAM.
+* Phase 1 Tokenization::            Turning text into numbers the model understands.
+* Phase 2 Prefill::                 The model reads your entire prompt at once.
+* Phase 3 Generation::              One token at a time, every time.
+* Phase 4 Streaming::               Tokens appear as they are born.
+* Phase 5 Idle and Keep-Alive::     Staying ready between requests.
+* Phase 6 Unload::                  Returning RAM to the operating system.
+* Worked Example Non-Thinking::     Full walkthrough with qwen2.5-coder:3b.
+* Thinking Models::                 What chain-of-thought reasoning really is.
+* Worked Example Thinking::         Full walkthrough with qwen3.5:0.8b.
+* Side-by-Side Comparison::         What you actually see in your terminal.
+* Quantization::                    Squeezing a 7B model into 4.7 GB.
+* Codebud Lifecycle Implementation::  How all of this maps onto Codebud's code.
+* Quick Reference Lifecycle::         Phase summary table and model selection guide.
+* References and Further Reading::    Primary sources for all claims in this chapter.
+@end menu
+
+
+@node The Full Picture
+@section The Full Picture
+@cindex lifecycle, overview
+
+Every language model call passes through the same six phases.  The diagram
+below labels each phase and shows the dominant bottleneck at that point:
+
+@example
+ ┌─────────────────────────────────────────────────────────────────┐
+ │  OLLAMA EXECUTION LIFECYCLE                                      │
+ │                                                                  │
+ │  [DISK]  ──(0)──>  [RAM]  ──(1)──>  [TOKENS]  ──(2)──>  [KV]  │
+ │  weights           model             int IDs             cache  │
+ │  (GGUF file)       loaded            e.g. 1196            built  │
+ │                    cold-load         tokenize             prefill│
+ │                    bottleneck:       bottleneck:          bottleneck:
+ │                    disk I/O          negligible           compute│
+ │                                                                  │
+ │  [KV]  ──(3)──>  [TOKEN]  ──(4)──>  [TEXT]  ──(5/6)──>  [RAM] │
+ │  cache            new ID             decoded              idle / │
+ │  +attn            repeat             detokenize           unload │
+ │  generation       until EOS          bottleneck:          keep   │
+ │  bottleneck:      bottleneck:        negligible           alive  │
+ │  memory BW        memory BW                               timer  │
+ └─────────────────────────────────────────────────────────────────┘
+@end example
+
+@noindent
+The phases are:
+
+@table @strong
+@item 0 --- Cold-load
+Model weight file is read from disk and mapped into RAM.  Happens only
+once per session (or after a keep_alive timeout).
+
+@item 1 --- Tokenization
+Your text prompt is converted into a sequence of integer IDs.  Fast (<<1 s).
+
+@item 2 --- Prefill
+The model processes all prompt tokens in a single parallel forward pass.
+This builds the @dfn{KV cache} and produces the first output token.  On
+CPU-only hardware this is the slowest phase.
+
+@item 3 --- Generation (autoregressive decode)
+The model generates one new token at a time, consulting the growing KV cache
+at each step.  Repeats until an end-of-sequence token appears.
+
+@item 4 --- Streaming
+Each generated token is decoded back to text and sent to the caller
+immediately, so text appears incrementally.
+
+@item 5/6 --- Idle / Unload
+After the response is complete, the model stays in RAM for the
+@code{keep_alive} window (default 5 minutes).  After idle timeout, weights
+are evicted from RAM.  The next request triggers a cold-load again.
+@end table
+
+
+@node What Lives on Disk
+@section What Lives on Disk
+@cindex GGUF file format
+@cindex model weights
+@cindex tokenizer vocabulary
+
+Before understanding how a model runs, it helps to know what is in the file
+Ollama stores on disk.
+
+When you run @command{ollama pull qwen2.5-coder:3b-instruct-q4_K_M}, Ollama
+downloads one or more files in @dfn{GGUF} format (GPT-Generated Unified
+Format, developed by the llama.cpp project).  Each GGUF file is a
+self-contained binary that bundles together:
+
+@table @strong
+@item Weight tensors
+The billions of floating-point numbers that make up the model.  For
+@code{qwen2.5-coder:3b-instruct-q4_K_M} these have been quantized to
+approximately 4.5 bits per weight, yielding a file of about 1.9 GB (down
+from 6 GB at full FP16 precision).
+
+@item Tokenizer vocabulary
+A list of 151,646 tokens (subword pieces) and their integer IDs.  This is
+the dictionary the model uses to convert text to numbers and back.
+
+@item Tokenizer merge rules
+The BPE merge table: the sequence of pair-merges learned during training.
+These rules determine how a word like @samp{directory} is split into subword
+tokens.
+
+@item Model hyperparameters
+Architecture constants: number of layers, number of attention heads, hidden
+dimension size, context window, etc.  These are read once at load time.
+
+@item Special token IDs
+The integer IDs for tokens with special meaning: end-of-sequence
+(@code{<|im_end|>}, ID 151645), beginning-of-conversation
+(@code{<|im_start|>}), fill-in-the-middle markers, etc.
+@end table
+
+@noindent
+Everything Ollama needs to run inference is in this single file.  There are
+no external lookup tables, no cloud calls, no additional downloads once the
+model is pulled.
+
+Ollama stores GGUF files under @file{~/.ollama/models/blobs/}, named by
+their SHA-256 hash.  A manifest file under
+@file{~/.ollama/models/manifests/} maps a human-readable name like
+@samp{qwen2.5-coder:3b-instruct-q4_K_M} to the corresponding blob hash.
+
+
+@node Phase 0 Cold-Load
+@section Phase 0: Cold-Load
+@cindex cold-load
+@cindex model loading
+@cindex memory-mapped I/O
+@cindex mmap
+
+A @dfn{cold-load} happens when a request arrives for a model that is not
+currently in RAM.  Ollama must read the GGUF file from disk before any
+inference can begin.
+
+@subsection What happens inside Ollama
+
+Ollama spawns a dedicated runner subprocess for each loaded model (using
+llama.cpp via CGo bindings).  The sequence is:
+
+@enumerate
+@item
+Ollama's scheduler checks its @samp{loaded} map.  The model is absent.
+
+@item
+The scheduler calls @code{processPending()}, which validates that the number
+of currently loaded models is below @env{OLLAMA_MAX_RUNNERS} (default: 1 on
+machines with less than ~6 GB available RAM, otherwise as many as fit).
+
+@item
+If at capacity, the least-recently-used model is evicted first
+(@code{findRunnerToUnload()}).
+
+@item
+Ollama enumerates available GPUs, estimates memory requirements, and spawns
+a new @code{LlamaServer} subprocess on a dynamically assigned TCP port.
+
+@item
+The subprocess opens the GGUF file with @code{mmap()} (memory-mapped I/O).
+The OS maps the file into the process's virtual address space.  Actual
+physical RAM pages are populated on first access (demand paging).
+
+@item
+As the runner initializes, it reads the model architecture from the GGUF
+header and allocates GPU/CPU buffers for the weight tensors.  On a CPU-only
+machine this is pure RAM allocation.
+
+@item
+The runner signals ready; Ollama's scheduler marks the model as loaded and
+forwards the pending request.
+@end enumerate
+
+@subsection How long does cold-load take?
+
+Cold-load time depends almost entirely on storage speed and model size.
+Typical numbers on consumer hardware:
+
+@multitable @columnfractions .35 .15 .15 .35
+@headitem Scenario @tab Model @tab File size @tab Cold-load time
+@item SSD, CPU-only (i7-8550U) @tab 3B Q4_K_M @tab 1.9 GB @tab 10--30 s
+@item SSD, CPU-only (i7-8550U) @tab 7B Q4_K_M @tab 4.7 GB @tab 60--120 s
+@item HDD, CPU-only @tab 3B Q4_K_M @tab 1.9 GB @tab 60--120 s
+@item SSD, NVIDIA GPU (8 GB) @tab 7B Q4_K_M @tab 4.7 GB @tab 5--15 s
+@end multitable
+
+@noindent
+@strong{The practical implication:} the first request after starting Ollama
+(or after the keep_alive timer expires) will appear to hang.  The model is
+loading.  Every subsequent request in the same session skips this phase
+entirely.
+
+@subsection How Codebud avoids cold-load delay
+
+Codebud fires a tiny warm-up request in a background thread as soon as
+@code{AgentCore} is constructed, before the user types anything:
+
+@example
+# agent/llm_stub.py
+def prewarm_model() -> None:
+    model = os.environ.get("OLLAMA_MODEL")
+    if not model or not _ollama_available():
+        return
+
+    def _warm() -> None:
+        requests.post(
+            f"@{_OLLAMA_BASE@}/api/generate",
+            json=@{"model": model, "prompt": "hi",
+                  "stream": False, "options": @{"num_predict": 2@}@},
+            timeout=(10, 120),
+        )
+
+    threading.Thread(target=_warm, daemon=True,
+                     name="codebud-prewarm").start()
+@end example
+
+@noindent
+By the time the user finishes typing their first request and presses Enter,
+the model is already resident in RAM.
+
+
+@node Phase 1 Tokenization
+@section Phase 1: Tokenization
+@cindex tokenization
+@cindex BPE (Byte Pair Encoding)
+@cindex token IDs
+@cindex vocabulary
+
+The model cannot process text directly.  Everything it does is arithmetic on
+integers.  @dfn{Tokenization} is the translation step: it converts your
+natural-language prompt into a sequence of integers, and converts the model's
+integer outputs back into readable text.
+
+@subsection What is a token?
+
+A @dfn{token} is a piece of text --- somewhere between a single character and
+a whole word --- that exists as an entry in the model's fixed vocabulary.
+Qwen2.5-Coder has a vocabulary of @strong{151,646 tokens}.  Each token has
+an integer ID from 0 to 151,645.
+
+Common English words are often a single token.  Uncommon words or
+identifiers are split into multiple tokens (subword pieces).
+
+@example
+Word            Tokens                  Token IDs
+-----------     --------------------    -----------------------
+"list"          ["list"]                [1196]
+"files"         [" files"]              [4390]
+"directory"     [" directory"]          [8263]
+"argparse"      [" arg", "parse"]       [1822, 6623]
+"qwen2.5"       [" q", "wen", "2.", "5"] [2243, 16794, 17, 20]
+@end example
+
+@noindent
+Notice the @samp{Ġ} (space character) prefix in the raw tokenizer output ---
+Qwen uses byte-level BPE where leading spaces are encoded as part of the
+following token rather than as separate tokens.
+
+@subsection How the vocabulary was built: BPE
+
+The vocabulary is built offline during model training using
+@dfn{Byte Pair Encoding} (BPE), a compression algorithm adapted for text:
+
+@enumerate
+@item
+Start with a base vocabulary of all 256 possible bytes.
+
+@item
+Scan the training corpus (5.5 trillion tokens of code and text for
+Qwen2.5-Coder).  Count every adjacent pair of tokens.
+
+@item
+Merge the most frequent pair into a new single token.  Add it to the
+vocabulary.
+
+@item
+Repeat until the vocabulary reaches the target size (151,646 for
+Qwen2.5-Coder).
+@end enumerate
+
+@noindent
+A simplified illustration:
+
+@example
+Corpus contains: "hug"×10, "pug"×5, "pun"×12, "bun"×4
+Starting vocab:  ["b", "g", "h", "n", "p", "s", "u"]
+
+Step 1: Most frequent pair = ("u","g")  → merge → "ug"
+Step 2: Most frequent pair = ("u","n")  → merge → "un"
+Step 3: Most frequent pair = ("h","ug") → merge → "hug"
+
+Final vocab: ["b","g","h","n","p","s","u","ug","un","hug"]
+"hugs" now tokenizes as: ["hug", "s"]
+@end example
+
+@noindent
+The key insight: common sequences become single tokens (cheap to represent);
+rare sequences get split into many tokens (expensive to represent).
+
+@subsection Applying the tokenizer at inference time
+
+Tokenization at inference is fast (<<1 s for any practical prompt length).
+The Python code using HuggingFace's tokenizer library looks like this:
+
+@example
+from transformers import AutoTokenizer
+
+tokenizer = AutoTokenizer.from_pretrained(
+    "Qwen/Qwen2.5-Coder-3B-Instruct"
+)
+prompt = "list files in the current directory"
+ids = tokenizer.encode(prompt)
+# ids = [1196, 4390, 304, 279, 1510, 8263]
+
+tokens = tokenizer.tokenize(prompt)
+# tokens = ['list', ' files', ' in', ' the', ' current', ' directory']
+@end example
+
+@noindent
+Inside Ollama this is handled in the runner subprocess using the tokenizer
+embedded in the GGUF file --- no Python required.
+
+@subsection Why token count matters
+
+The model counts its context in tokens, not characters or words.  Codebud's
+planning prompt (system instructions + user request + examples) is
+approximately 500--700 tokens.  The model's maximum context window
+(the longest combined prompt + response it can handle without confusion) is
+4,096 tokens in Ollama's default configuration for Qwen2.5-Coder, though
+the model architecture supports up to 128K tokens.
+
+More tokens = slower prefill.  This is why the planning prompt was trimmed
+to reduce cold-start time (@pxref{Phase 2 Prefill}).
+
+
+@node Phase 2 Prefill
+@section Phase 2: Prefill
+@cindex prefill
+@cindex KV cache
+@cindex key-value cache
+@cindex Time To First Token (TTFT)
+@cindex attention mechanism
+
+@dfn{Prefill} is the phase where the model reads your entire prompt and
+builds its internal representation of it.  It happens once per request, and
+on CPU-only hardware it is usually the single slowest phase.
+
+@subsection What the model is actually doing
+
+A transformer model is a stack of @dfn{layers} (Qwen2.5-Coder-3B has 36
+layers; the 7B has 28 deeper layers).  Each layer performs a
+@dfn{self-attention} operation that lets every token in the sequence look at
+every other token and update its representation based on relevance.
+
+During prefill, all N prompt tokens are fed into the model @emph{in
+parallel} in a single forward pass.  For each token at each layer, the model
+computes three vectors:
+
+@table @strong
+@item Q (Query)
+@emph{``What information am I looking for?''}
+
+@item K (Key)
+@emph{``What information do I offer to match against?''}
+
+@item V (Value)
+@emph{``What information do I carry to the output?''}
+@end table
+
+@noindent
+The attention formula is:
+
+@example
+              Q · K^T
+Attention = softmax(------) · V
+              sqrt(d_k)
+@end example
+
+@noindent
+For N input tokens, this requires computing an N×N matrix --- for every pair
+of tokens.  The cost grows with the @emph{square} of sequence length: double
+the prompt, roughly quadruple the prefill work.
+
+@subsection The KV cache
+
+The Q, K, and V matrices computed during prefill are expensive to compute
+and will be needed again during the generation phase.  Rather than
+recomputing them, Ollama caches the K and V matrices --- this is the
+@dfn{KV cache}.
+
+@example
+Prompt:  [tok_0] [tok_1] [tok_2] ... [tok_N]
+             |       |       |           |
+             ↓       ↓       ↓           ↓     (prefill: parallel)
+           [K_0]  [K_1]  [K_2]  ...  [K_N]    ← stored in KV cache
+           [V_0]  [V_1]  [V_2]  ...  [V_N]    ← stored in KV cache
+             |
+             ↓
+          [first output token]   ← produced at end of prefill
+@end example
+
+@noindent
+Every subsequent generation step adds one new K, V pair to the cache.
+
+@subsection KV cache memory requirements
+
+The KV cache occupies RAM in proportion to the context length, number of
+layers, and the precision of the cache entries.  For Qwen2.5-Coder-7B at
+FP16 precision, 4 KV heads, 28 layers, head size 128:
+
+@example
+Per token = 2 × layers × KV_heads × head_size × bytes_per_value
+          = 2 × 28 × 4 × 128 × 2 bytes
+          = 57,344 bytes  ≈ 56 KB per token
+
+At 4,096 tokens context: 56 KB × 4,096 ≈ 224 MB
+At 128K tokens context:  56 KB × 131,072 ≈ 7 GB  (!)
+@end example
+
+@noindent
+This is why large context windows require substantial RAM beyond the model
+weights themselves.
+
+@subsection Prefill timing
+
+Prefill speed is measured in @dfn{TTFT} --- Time To First Token.  On
+CPU-only hardware, prefill is much slower than generation:
+
+@example
+Hardware: i7-8550U (CPU-only), Qwen2.5-Coder-3B Q4_K_M
+
+Codebud planning prompt (≈600 tokens):
+  Prefill time:    ~230 seconds   (≈0.4 tokens/second processed)
+  TTFT:            ~230 seconds   (user waits this long before any output)
+
+Short prompt (10 tokens):
+  Prefill time:    ~2--5 seconds
+  TTFT:            ~2--5 seconds
+@end example
+
+@noindent
+The progress indicator in @command{codebud chat} shows ``Thinking... Xs
+(prefill)'' precisely during this phase.
+
+@subsection What Ollama reports
+
+When @code{stream: false}, Ollama includes prefill timing in the response:
+
+@example
+@{
+  "prompt_eval_count": 612,         ← tokens in your prompt
+  "prompt_eval_duration": 237000000000, ← nanoseconds (= 237 s)
+  "eval_count": 45,                 ← tokens generated
+  "eval_duration": 41000000000,     ← nanoseconds (= 41 s)
+  "total_duration": 278134000000    ← nanoseconds (= 278 s total)
+@}
+@end example
+
+@noindent
+Tokens per second during prefill = @code{prompt_eval_count /
+(prompt_eval_duration / 1e9)} = 612 / 237 ≈ 2.6 t/s.
+Tokens per second during generation = @code{eval_count /
+(eval_duration / 1e9)} = 45 / 41 ≈ 1.1 t/s.
+
+
+@node Phase 3 Generation
+@section Phase 3: Autoregressive Generation
+@cindex autoregressive generation
+@cindex token sampling
+@cindex temperature
+@cindex end-of-sequence token
+@cindex EOS token
+
+After prefill, the model has processed your prompt and produced the first
+output token.  Now it enters @dfn{autoregressive generation}: producing one
+token at a time, each conditioned on all previous tokens.
+
+@subsection Why one token at a time?
+
+Generation is @emph{inherently serial}: to generate token N+1, the model must
+know token N, which means tokens must be generated in order.  There is no
+shortcut --- this is a fundamental property of the transformer architecture.
+
+Each generation step:
+
+@enumerate
+@item
+Takes the most recently generated token.
+
+@item
+Computes its Q vector and attends over the full KV cache (all previous
+prompt + generated tokens).
+
+@item
+Produces a probability distribution over all 151,646 vocabulary tokens.
+
+@item
+@dfn{Samples} one token from that distribution (or takes the highest
+probability token if temperature=0).
+
+@item
+Appends the new K and V vectors to the KV cache.
+
+@item
+Returns the token ID; the caller decodes it to text.
+
+@item
+Repeats from step 1 with the new token --- until the model emits the
+end-of-sequence token @code{<|im_end|>} (ID 151645).
+@end enumerate
+
+@example
+ Generation loop (simplified):
+
+ KV_cache = [prefill KV vectors for all prompt tokens]
+ token = first_token_from_prefill
+
+ while token != EOS:
+     q = compute_query(token)
+     attended = attend(q, KV_cache)   ← reads entire KV cache from RAM
+     logits = project_to_vocab(attended)
+     token = sample(logits, temperature=0.0)
+     kv = compute_kv(token)
+     KV_cache.append(kv)
+     yield token                       ← sent to streaming caller
+@end example
+
+@subsection Why generation is memory-bandwidth-bound
+
+During each generation step, the model must read the @emph{entire} KV cache
+from RAM into CPU registers --- once per token, every token.  For a 4,096
+token KV cache at 224 MB, that is 224 MB of RAM reads per generated token.
+A modern CPU can read RAM at ~40--60 GB/s, meaning each attention step takes
+roughly 4--6 ms, or about 170--250 tokens/second at the memory-bandwidth
+limit.
+
+In practice, the full transformer computation (not just attention) plus
+overhead means CPU generation speed is @strong{5--15 t/s} for the 3B model
+and @strong{2--5 t/s} for the 7B --- both limited by how fast the CPU can
+move weight and cache data.
+
+@subsection Temperature and sampling
+
+The @dfn{temperature} parameter controls how the model samples from its
+output distribution.  Codebud sets @code{temperature: 0} because it needs
+deterministic JSON output:
+
+@example
+Temperature = 0.0  →  Always pick the highest-probability token.
+                       Deterministic; good for structured output (JSON).
+
+Temperature = 0.7  →  Sample proportionally. More creative and varied.
+                       Good for prose; bad for plans that must be valid JSON.
+
+Temperature = 2.0  →  Highly random. May produce nonsense.
+@end example
+
+
+@node Phase 4 Streaming
+@section Phase 4: Streaming and Detokenization
+@cindex streaming
+@cindex detokenization
+@cindex on_chunk callback
+@cindex NDJSON
+
+As each token is generated, Ollama immediately @dfn{detokenizes} it (looks up
+its text in the vocabulary) and sends it to the client.  This is why text
+appears incrementally rather than all at once.
+
+@subsection Ollama's streaming wire format
+
+Ollama uses newline-delimited JSON (NDJSON) over HTTP with
+@code{Transfer-Encoding: chunked}.  Each newline-terminated JSON object
+represents one or a few tokens:
+
+@example
+@{"model":"qwen2.5-coder:3b","response":"@{","done":false@}
+@{"model":"qwen2.5-coder:3b","response":"\"status\"","done":false@}
+@{"model":"qwen2.5-coder:3b","response":":","done":false@}
+@{"model":"qwen2.5-coder:3b","response":" \"ok\"","done":false@}
+...
+@{"model":"qwen2.5-coder:3b","response":"","done":true,
+  "eval_count":45,"eval_duration":41000000000,...@}
+@end example
+
+@noindent
+The final object has @code{"done": true} and includes the full timing
+statistics.
+
+@subsection How Codebud receives streaming output
+
+In @file{agent/llm_stub.py}, the @code{_call_ollama()} function iterates over
+the NDJSON lines and accumulates the response.  An optional @code{on_chunk}
+callback is called for each fragment so the CLI can update a live progress
+indicator without coupling display logic to the LLM layer:
+
+@example
+# agent/llm_stub.py  (simplified)
+def _call_ollama(model, prompt, timeout, on_chunk=None):
+    r = requests.post(
+        f"@{_OLLAMA_BASE@}/api/generate",
+        json=@{"model": model, "prompt": prompt,
+              "stream": True, "options": @{"temperature": 0@}@},
+        stream=True,
+        timeout=(10, timeout),
+    )
+    chunks = []
+    for line in r.iter_lines():
+        chunk = json.loads(line)
+        text = chunk.get("response", "")
+        chunks.append(text)
+        if on_chunk and text:
+            on_chunk(text)    ← CLI spinner sees each fragment here
+        if chunk.get("done"):
+            break
+    return "".join(chunks)
+@end example
+
+@noindent
+The HTTP read timeout is set to the full @code{timeout} value (600 s by
+default) because with streaming, the connection receives a trickle of data
+throughout generation --- the read timeout only fires if @emph{no data
+arrives for that entire duration}, which would only happen if Ollama crashed.
+
+
+@node Phase 5 Idle and Keep-Alive
+@section Phase 5: Idle and Keep-Alive
+@cindex keep_alive
+@cindex idle timeout
+@cindex model lifecycle, idle
+
+After the response is complete, the model does not immediately vanish from
+RAM.  Ollama's @dfn{keep_alive} mechanism keeps it resident so the next
+request is fast.
+
+@subsection The keep_alive timer
+
+Every successful request resets a per-model countdown timer.  When the timer
+reaches zero and no request is in flight for that model, Ollama evicts it.
+
+The default is @strong{5 minutes}.  Configure it per-request or server-wide:
+
+@multitable @columnfractions .30 .30 .40
+@headitem Value @tab Meaning @tab Use case
+@item @code{0} @tab Evict immediately @tab Free RAM after each response
+@item @code{"5m"} @tab 5 minutes (default) @tab Short interactive sessions
+@item @code{"30m"} @tab 30 minutes @tab Longer work sessions
+@item @code{-1} @tab Never evict @tab Pin model for extended use
+@end multitable
+
+@noindent
+Set @code{keep_alive} per-request in the JSON body, or server-wide:
+
+@example
+# Per-request (overrides server default):
+curl http://localhost:11434/api/generate -d \
+  '@{"model":"qwen2.5-coder:3b-instruct-q4_K_M","prompt":"hi","keep_alive":"30m"@}'
+
+# Server-wide default (add to shell profile or systemd service):
+export OLLAMA_KEEP_ALIVE=30m
+@end example
+
+@subsection How Codebud uses keep_alive
+
+Codebud's @code{ModelHeartbeat} class sends a small real request every
+4 minutes (below the 5-minute default) to keep the model loaded for the
+entire session:
+
+@example
+# agent/llm_stub.py
+class ModelHeartbeat:
+    def __init__(self, interval: float = 240.0):  # 4 minutes
+        ...
+
+    def _ping(self) -> None:
+        requests.post(
+            f"@{_OLLAMA_BASE@}/api/generate",
+            json=@{"model": model, "prompt": "hi",
+                  "stream": False,
+                  "options": @{"num_predict": 2@}@},  # tiny real request
+            timeout=(5, 60),
+        )
+@end example
+
+@noindent
+A zero-token ping (@code{"num_predict": 0}) would not work here --- Ollama
+returns immediately without exercising the model, so it does @emph{not}
+count as model usage and does @emph{not} reset the keep_alive timer.  The
+ping must produce actual output tokens to keep the model alive.
+
+
+@node Phase 6 Unload
+@section Phase 6: Unload
+@cindex unload
+@cindex model eviction
+@cindex LRU eviction
+
+When the keep_alive timer expires, Ollama terminates the runner subprocess
+for that model.  The OS reclaims all RAM that was mapped to the GGUF file.
+The next request for that model restarts from Phase 0 (cold-load).
+
+@subsection Forced unload via the API
+
+You can evict a model immediately without waiting for the timer:
+
+@example
+# Evict qwen2.5-coder:7b from RAM (model files stay on disk):
+curl -s -X POST http://localhost:11434/api/generate \
+  -d '@{"model":"qwen2.5-coder:7b-instruct-q4_K_M","keep_alive":0@}'
+@end example
+
+@noindent
+Or using the Ollama CLI:
+
+@example
+ollama stop qwen2.5-coder:7b-instruct-q4_K_M
+@end example
+
+@subsection LRU eviction when RAM is full
+
+If you request a model while another is already loaded and there is not
+enough RAM for both, Ollama evicts the least-recently-used loaded model first.
+This is automatic and transparent.  You can prevent a specific model from
+being evicted by setting its @code{keep_alive} to @code{-1}.
+
+
+@node Worked Example Non-Thinking
+@section Worked Example: A Non-Thinking Model End to End
+@cindex worked example
+@cindex qwen2.5-coder
+
+Let us trace a single real request from start to finish.
+
+@strong{Request:} @samp{list files in the current directory}
+@strong{Model:} @code{qwen2.5-coder:3b-instruct-q4_K_M} (warm, already in RAM)
+@strong{Hardware:} i7-8550U, 16 GB RAM, CPU-only
+
+@subsection Step 1: You press Enter
+
+@command{codebud run "list files in the current directory"} invokes
+@code{AgentCore.handle_user_message()}, which calls
+@code{LLMPlanner.generate_plan()}.  The planner builds a structured prompt:
+
+@example
+You are a precise coding-agent planner. Your ONLY job is to output a JSON plan.
+
+CRITICAL RULES:
+1. Output ONLY valid JSON. No prose, no markdown...
+...
+USER REQUEST: list files in the current directory
+@end example
+
+@noindent
+This prompt is approximately 600 tokens.
+
+@subsection Step 2: Tokenization
+
+The 600-word prompt is passed to the Ollama REST API.  Inside the runner,
+the embedded tokenizer converts it to 600 integer IDs.  Elapsed time:
+@strong{<1 second}.
+
+@example
+"list"          → 1196
+" files"        → 4390
+" in"           → 304
+" the"          → 279
+" current"      → 1510
+" directory"    → 8263
+... (×600 total) ...
+@end example
+
+@subsection Step 3: Prefill
+
+The runner feeds all 600 token IDs through 36 transformer layers in
+parallel.  For each layer, the attention mechanism relates each token to
+every other token.  At the end of prefill:
+
+@itemize @bullet
+@item The KV cache is populated with 600 × 36 × 4 × 128-element vectors.
+@item The model has ``read'' and ``understood'' the entire prompt in context.
+@item The first output token is produced: @samp{@{} (ID 90295, opening brace).
+@end itemize
+
+@noindent
+Elapsed time on i7-8550U: @strong{~230 seconds}.  The progress indicator shows:
+
+@example
+| Thinking... 230s (prefill)
+@end example
+
+@subsection Step 4: Generation
+
+From the first @samp{@{}, the model generates the JSON plan token by token.
+Each step reads the full KV cache, produces one token, appends its K and V to
+the cache.
+
+@example
+@{  →  "  →  s  →  t  →  a  →  t  →  u  →  s  →  "  →  :  →  " ok" ...
+@end example
+
+@noindent
+Full output (45 tokens, 41 seconds at 1.1 t/s):
+
+@example
+@{"status": "ok", "plan": [@{"id": "step_0",
+  "description": "list files",
+  "tool": "command",
+  "args": @{"cmd": "ls -la"@}@}]@}
+@end example
+
+@noindent
+The progress indicator updates during generation:
+
+@example
+\ Generating... tokens: 23 | 1.1 t/s | 251s elapsed
+@end example
+
+@subsection Step 5: End-of-sequence and final timing
+
+The model emits the @code{<|im_end|>} token (ID 151645).  Ollama sends the
+final NDJSON object with @code{"done": true} and timing statistics:
+
+@example
+prefill: 230s | gen: 41s | total: 271s | tokens: 45 | 1.1 t/s
+@end example
+
+@subsection Step 6: JSON parsing and execution
+
+@code{call_llm()} joins all chunks into the full string.  The planner calls
+@code{json.loads()}, validates the structure, and returns the plan.
+@code{AgentCore} passes it to @code{Executor.execute_plan()}, which runs
+@command{ls -la} in the sandbox and prints the result.
+
+@subsection Summary timeline
+
+@example
+t=0        User presses Enter
+t=0 -- 1s  Tokenization (600 tokens, <1 s)
+t=1 -- 231s  Prefill  (600 tokens × 36 layers, ~230 s on i7-8550U)
+t=231s     First token "@{" appears; progress switches to token counter
+t=231 -- 272s  Generation (45 tokens at 1.1 t/s, ~41 s)
+t=272s     Response complete; JSON parsed; plan printed; step executed
+@end example
+
+
+@node Thinking Models
+@section Thinking Models: A Different Kind of Generation
+@cindex thinking models
+@cindex chain-of-thought
+@cindex DeepSeek-R1
+@cindex Qwen3
+@cindex @code{<think>} tokens
+@cindex reasoning tokens
+
+@dfn{Thinking models} (also called @dfn{reasoning models}) include
+DeepSeek-R1, the Qwen3 family, and OpenAI o1/o3.  They look like ordinary
+chat models from the outside but generate a large block of internal reasoning
+text before producing their final answer.  This section explains what that
+means and why it matters for Codebud.
+
+@subsection Where the thinking comes from
+
+Thinking models are trained using @dfn{reinforcement learning} on problems
+that have verifiable correct answers (math competitions, code execution, logic
+puzzles).  The training reward is given only for correct final answers, not
+for how the model reasoned.  Over many training steps, the model learned that
+generating more thorough reasoning --- self-verification, backtracking,
+reformulating --- consistently leads to more correct answers.  The RL
+training process rewarded @emph{longer, better reasoning chains}.
+
+The result: the model generates a reasoning scratchpad before committing to
+any answer.
+
+@subsection The @code{<think>} token block
+
+Thinking models use special delimiter tokens to separate reasoning from
+the final answer:
+
+@example
+User:  "say hello in exactly 5 words"
+
+Model output (streaming, token by token):
+┌─────────────────────────────────────────────────────────┐
+│  <think>                                                │
+│  The user wants exactly five words. Let me count what   │
+│  "hello" means as a greeting. I need five distinct      │
+│  words. "Hello there, how are you?" — that's five words. │
+│  But is "hello" its own word? Yes. Let me reconsider.   │
+│  "Hello, nice to meet you!" — let me count: Hello(1),   │
+│  nice(2), to(3), meet(4), you(5). Yes, that works.      │
+│  ...several hundred more tokens of deliberation...      │
+│  </think>                                               │
+│                                                         │
+│  Hello, nice to meet you!                               │
+└─────────────────────────────────────────────────────────┘
+@end example
+
+@noindent
+@strong{This is all regular token generation.}  There is no separate
+reasoning processor.  The model emits the @code{<think>} token, generates
+text tokens for as long as it needs to reason, then emits @code{</think>}
+(token ID 151668 in Qwen3), and finally generates the answer.
+
+@subsection Why the reasoning can be enormous
+
+There is no hardcoded reasoning limit built into the model weights.  The
+model learned to emit @code{</think>} when it has reasoned ``enough'', but:
+
+@itemize @bullet
+@item For hard problems, ``enough'' may mean 2,000--10,000 thinking tokens.
+@item DeepSeek-R1 is configured with a maximum generation of
+      @strong{32,768 tokens} (combined thinking + answer).
+@item Qwen3's maximum thinking budget is @strong{38,912 tokens}.
+@item Even simple questions can trigger extended reasoning if the model
+      pattern-matches them as ``hard'' (due to surface features like
+      unusual phrasing).
+@end itemize
+
+@noindent
+On CPU-only hardware at 1--5 t/s, 2,000 thinking tokens takes
+@strong{7--33 minutes}.  This is not a loading delay --- the model is
+actively generating every second.
+
+@subsection Controlling thinking behavior
+
+In HuggingFace format, thinking can be enabled or disabled when building
+the chat template:
+
+@example
+# Qwen3 with thinking enabled (default for Qwen3 instruct models):
+text = tokenizer.apply_chat_template(
+    messages,
+    tokenize=False,
+    add_generation_prompt=True,
+    enable_thinking=True   ← include reasoning system prompt
+)
+
+# Qwen3 with thinking disabled:
+text = tokenizer.apply_chat_template(
+    messages,
+    enable_thinking=False  ← suppress thinking block
+)
+@end example
+
+@noindent
+In Ollama, thinking behavior is controlled by the modelfile system prompt
+and is not directly configurable per-request at the API level --- you would
+need to create a custom modelfile with @code{PARAMETER think false} (where
+supported) or switch to the @samp{:no-think} model variant if one is
+available.
+
+@subsection Why thinking models break Codebud's planner
+
+Codebud's planning prompt says:
+
+@example
+CRITICAL RULES:
+1. Output ONLY valid JSON. No prose, no markdown, no code fences,
+   no explanation.
+@end example
+
+@noindent
+A thinking model ignores this instruction for the @emph{entire duration of
+its reasoning chain}.  It emits thousands of tokens of prose before it
+eventually produces the JSON the planner needs.  By that time, the Ollama
+request has timed out.  Even if it did not time out, the planner calls
+@code{json.loads()} on the full output string --- which starts with
+@code{<think>...} and is therefore not valid JSON.
+
+Use @strong{instruct models} (model name contains @samp{-instruct}) with
+Codebud, not thinking models.
+
+
+@node Worked Example Thinking
+@section Worked Example: A Thinking Model End to End
+@cindex worked example, thinking model
+@cindex qwen3.5
+
+Same request, different model --- now with @code{qwen3.5:0.8b} (a thinking
+model).  We observed this live in production on 2026-05-01.
+
+@strong{Request:} @samp{say hello in exactly 5 words}
+@strong{Model:} @code{qwen3.5:0.8b} (warm, already in RAM)
+@strong{Hardware:} i7-8550U, 16 GB RAM, CPU-only
+@strong{Total elapsed:} @strong{13 minutes and 35 seconds}
+
+@subsection What happened
+
+@table @strong
+
+@item t=0s
+You press Enter.  Tokenization takes <1 second.
+
+@item t=0 -- ~3s
+Prefill: the 8-token prompt is tiny.  Prefill completes in about 3 seconds.
+The first output token emitted is @code{<think>}.
+
+@item t=3s -- ~810s (13+ minutes)
+The model generates hundreds of reasoning tokens inside the @code{<think>}
+block.  These appear streaming in the terminal --- at ~5 t/s, 800 seconds
+means approximately 4,000 thinking tokens.  The user sees the model
+thinking out loud, debating how to phrase a 5-word greeting.
+
+@item t=~810s
+The model emits @code{</think>} and then generates the actual answer: a
+5-word greeting (approximately 6--10 more tokens, taking ~2 more seconds).
+
+@end table
+
+@subsection What you see in the terminal
+
+Running @command{ollama run qwen3.5:0.8b} directly, you observe:
+
+@example
+>>> say hello in exactly 5 words
+<think>
+The user wants me to say hello using exactly five words. Let me count
+carefully. "Hello there, nice to meet you" -- Hello(1), there(2),
+nice(3), to(4), meet(5), you(6) -- that's six words. Let me try
+"Hello, how are you doing?" -- Hello(1), how(2), are(3), you(4),
+doing(5) -- five words! But is the comma part of a word? No, commas
+are punctuation. So "Hello, how are you doing?" is five words.
+Actually, let me reconsider what counts as a word...
+[...continues for several minutes...]
+</think>
+
+Hello, how are you doing?
+@end example
+
+@noindent
+@strong{This is not a bug and not a loading delay.}  The model is
+performing exactly as designed.  The streaming text you see is the model's
+active internal reasoning being generated token by token.
+
+@subsection Why the 0.8B model is slower than the 3B for this task
+
+The 3B instruct model produces a ~45 token JSON plan in ~41 seconds.
+The 0.8B @emph{thinking} model took 815 seconds for a 5-word greeting.
+The 0.8B model is smaller and would otherwise be @emph{faster} per
+token --- but it generated @strong{~50 times more tokens} due to the
+reasoning chain.
+
+Model selection for a coding agent is not just about size: it is about
+architecture (instruct vs thinking).
+
+
+@node Side-by-Side Comparison
+@section Side-by-Side: What You See in Your Terminal
+@cindex comparison, thinking vs non-thinking
+
+The table below shows what a user observes at the terminal for each phase
+with each model type.
+
+@multitable @columnfractions .20 .38 .42
+@headitem Phase @tab Non-thinking (qwen2.5-coder:3b) @tab Thinking (qwen3.5:0.8b)
+@item Prefill @tab Spinner: ``Thinking... 230s (prefill)'' @tab Spinner: ``Thinking... 3s (prefill)''
+@item First output @tab JSON @code{@{} token appears @tab @code{<think>} prose token appears
+@item Generation @tab Token counter: @code{tokens: 23 | 1.1 t/s} @tab Token counter: @code{tokens: 847 | 4.8 t/s}
+@item End of gen. @tab @code{"done":true} after ~45 tokens @tab @code{"done":true} after ~4000 tokens
+@item Total time @tab ~271s (4.5 minutes) @tab ~815s (13.5 minutes)
+@item Planner result @tab Valid JSON plan @tab JSON parse error (output starts with @code{<think>})
+@end multitable
+
+@noindent
+A useful rule of thumb: if the model response @emph{begins} with anything
+other than @samp{@{}, the planner will fail.  Thinking tokens always appear
+before the JSON.
+
+
+@node Quantization
+@section Quantization: Squeezing a 7B Model into 4.7 GB
+@cindex quantization
+@cindex Q4_K_M
+@cindex GGUF quantization
+@cindex floating-point precision
+
+@dfn{Quantization} is the process of reducing the precision of a model's
+weights from the full-precision format used during training to a smaller
+format that fits on consumer hardware.
+
+@subsection Full-precision baseline
+
+During training, model weights are typically stored as @dfn{BF16} or
+@dfn{FP16} --- 16-bit floating-point numbers (2 bytes per weight).  A 7B
+parameter model requires about @strong{13 GB} in FP16.  A 3B model requires
+about @strong{6 GB}.  Neither fits comfortably in 16 GB of RAM alongside the
+OS and other applications.
+
+@subsection How Q4_K_M works
+
+@samp{Q4_K_M} is a GGUF quantization format developed for the llama.cpp
+project.  Let us break down the name:
+
+@table @strong
+@item Q
+Quantized format (as opposed to F16 or F32 full precision).
+
+@item 4
+Target storage of approximately @strong{4 bits per weight} (compared to 16
+bits in FP16).
+
+@item K
+Uses the @dfn{k-quant} method: instead of a single global scale factor per
+tensor, each @strong{block of 64 weights} gets its own scale factor and
+zero-point.  This preserves local structure much better than uniform
+quantization.
+
+@item M
+Medium precision tier within k-quants.  Attention layers (more sensitive to
+precision loss) are stored at slightly higher bit depth; feed-forward layers
+(more tolerant) are compressed more aggressively.  The result is an
+@emph{average} of approximately @strong{4.5 bits per weight} --- not a pure 4.
+@end table
+
+@noindent
+Visualized:
+
+@example
+FP16 weight:  [1111000011110000]   16 bits, exact
+Q4 weight:    [1111]               4 bits, approximate
+
+Per-block (64 weights) in K-quant:
+  [scale_factor][zero_point][w0_4bit][w1_4bit]...[w63_4bit]
+  The scale and zero-point allow recovery: actual ≈ w_4bit × scale + zero
+@end example
+
+@subsection Memory savings and accuracy impact
+
+Measured on llama.cpp benchmarks for a 7B model:
+
+@multitable @columnfractions .15 .15 .20 .50
+@headitem Format @tab Bits/wt @tab File size @tab Perplexity increase vs FP16
+@item FP16 @tab 16 @tab 13.0 GB @tab baseline (perfect)
+@item Q8_0 @tab 8 @tab 6.7 GB @tab +0.0004 (undetectable)
+@item Q6_K @tab ~6.5 @tab 5.15 GB @tab +0.004 (negligible)
+@item Q5_K_M @tab ~5.5 @tab 4.45 GB @tab +0.014 (tiny)
+@item @strong{Q4_K_M} @tab @strong{~4.5} @tab @strong{3.8 GB} @tab @strong{+0.05 (imperceptible)}
+@item Q3_K_M @tab ~3.5 @tab 3.3 GB @tab +0.15 (noticeable)
+@item Q2_K @tab ~2.5 @tab 2.6 GB @tab +0.6 (significant)
+@end multitable
+
+@noindent
+@dfn{Perplexity} is a measure of how surprised the model is by text it
+should predict well --- lower is better.  The +0.05 increase at Q4_K_M is
+so small that no practical code generation task is affected.
+
+@subsection Why quantization also speeds up generation
+
+Generation speed is memory-bandwidth-bound: the CPU must read model weights
+from RAM into registers on every forward pass.  Smaller weights mean less
+data transferred per step:
+
+@example
+FP16, 7B model: 13 GB of weights to stream per forward pass step
+Q4_K_M, 7B model: 3.8 GB of weights to stream per forward pass step
+                   = 3.4× less data = ~3× faster generation
+@end example
+
+@noindent
+Practical result on an i7-8550U:
+
+@example
+qwen2.5-coder:7b-instruct-q4_K_M  → ~2--5 t/s   (generation)
+qwen2.5-coder:3b-instruct-q4_K_M  → ~5--15 t/s  (generation)
+@end example
+
+@noindent
+The 3B model generates faster than the 7B because both the weight reads
+@emph{and} the matrix multiplications are cheaper for the smaller model.
+
+
+@node Codebud Lifecycle Implementation
+@section What Codebud Does at Each Phase
+@cindex Codebud implementation details
+@cindex AgentCore
+@cindex llm_stub.py
+
+The table below maps each lifecycle phase to the Codebud code that handles
+it.
+
+@multitable @columnfractions .20 .40 .40
+@headitem Phase @tab Codebud code @tab Notes
+@item Pre-warm @tab @code{agent/llm_stub.py::prewarm_model()} @tab Fires in background thread at AgentCore init
+@item Tokenization @tab Ollama internal (GGUF embedded tokenizer) @tab Codebud does not touch this layer
+@item Prefill @tab @code{agent/llm_stub.py::_call_ollama()} starts the POST request @tab @code{on_chunk} receives nothing during this phase
+@item First token @tab @code{ProgressIndicator.on_chunk()} called for the first time @tab Spinner switches from ``prefill'' to ``generating'' display
+@item Generation @tab @code{_call_ollama()} iterates @code{r.iter_lines()} @tab Each line is one NDJSON token fragment
+@item Streaming @tab @code{on_chunk} callback passed through AgentCore → LLMPlanner → call_llm @tab Decouples display from LLM layer
+@item Done signal @tab @code{chunk.get("done")} breaks the loop @tab Full text assembled from @code{chunks}
+@item JSON parse @tab @code{LLMPlanner._attempt()} calls @code{json.loads()} @tab On failure: strips fences, retries with simpler prompt
+@item Idle / heartbeat @tab @code{agent/llm_stub.py::ModelHeartbeat._ping()} @tab Sends ``hi'' every 4 min to reset keep_alive timer
+@item Unload @tab @code{agent/core.py::AgentCore.close()} stops heartbeat @tab Model unloads naturally after next keep_alive expiry
+@end multitable
+
+@noindent
+The complete call chain for a single user request:
+
+@example
+run_agent.py cmd_run / cmd_chat
+  → AgentCore.handle_user_message(message, on_chunk=prog.on_chunk)
+      → LLMPlanner.generate_plan(message, on_chunk=on_chunk)
+          → LLMPlanner._build_prompt(message)   [tokenization input]
+          → call_llm(prompt, on_chunk=on_chunk)
+              → _call_ollama(model, prompt, timeout, on_chunk)
+                  ← Ollama /api/generate  (streaming NDJSON)
+                      Phase 1: tokenize prompt
+                      Phase 2: prefill (KV cache built)
+                      Phase 3+4: generate + stream tokens
+                  → on_chunk(fragment)  [ProgressIndicator.on_chunk]
+          → json.loads(full_output)
+          → _validate_plan_structure(plan_json)
+      → AgentCore._validate_plan(plan_json)
+  → Executor.execute_plan(plan)
+      → ToolRegistry.get(tool).run(args)
+      → MemoryStore.add_snapshot(step, result)
+  → print results
+@end example
+
+
+@node Quick Reference Lifecycle
+@section Quick Reference
+@cindex quick reference, lifecycle
+
+@strong{Phase summary:}
+
+@multitable @columnfractions .05 .20 .20 .20 .35
+@headitem # @tab Phase @tab Bottleneck @tab Typical time @tab What to watch
+@item 0 @tab Cold-load @tab Disk I/O @tab 10--120 s @tab Only on first request or after idle timeout
+@item 1 @tab Tokenize @tab Negligible @tab <1 s @tab --
+@item 2 @tab Prefill @tab CPU compute @tab 2--230 s @tab Grows with prompt length (×4 for ×2 tokens)
+@item 3 @tab Generate @tab RAM bandwidth @tab 5--600 s @tab Grows with output length; 1--15 t/s on CPU
+@item 4 @tab Stream @tab Network (loopback) @tab Negligible @tab Tokens appear live in terminal
+@item 5 @tab Idle @tab -- @tab 0--5 min @tab keep_alive timer; reset by each request
+@item 6 @tab Unload @tab -- @tab <1 s @tab RAM freed; next request cold-starts
+@end multitable
+
+@noindent
+@strong{Choosing a model for Codebud:}
+
+@multitable @columnfractions .45 .15 .40
+@headitem Criterion @tab Answer @tab Action
+@item Does the model name contain @samp{-instruct}? @tab No @tab Do not use with Codebud
+@item Is the family @samp{qwen35} or @samp{deepseek-r1}? @tab Yes @tab Do not use; it is a thinking model
+@item Warm response to @code{"say hello in 5 words"} > 30 s? @tab Yes @tab Likely a thinking model or too large
+@item @code{ollama show <model> | grep family} returns @samp{qwen2}? @tab Yes @tab Safe to use
+@end multitable
+
+
+@node References and Further Reading
+@section References and Further Reading
+@cindex references
+@cindex bibliography
+
+The claims and technical details in this chapter are drawn from the
+following primary sources.  Readers wishing to verify a specific claim or
+study a topic in more depth should consult these directly.
+
+@subsection Transformer Architecture and Attention
+
+@table @strong
+
+@item Vaswani et al. (2017) --- @emph{Attention Is All You Need}
+The original paper introducing the transformer architecture, scaled
+dot-product attention, multi-head attention, and the encoder-decoder
+structure.  The KV cache and the prefill/decode split originate from this
+work.
+@*@url{https://arxiv.org/abs/1706.03762}
+
+@item Radford et al. (2019) --- @emph{Language Models are Unsupervised Multitask Learners} (GPT-2)
+Introduced byte-level BPE tokenization for large language models and
+demonstrated scaling behaviour.
+@*@url{https://cdn.openai.com/better-language-models/language_models_are_unsupervised_multitask_learners.pdf}
+
+@end table
+
+@subsection Quantization
+
+@table @strong
+
+@item Frantar et al. (2022) --- @emph{GPTQ: Accurate Post-Training Quantization for Generative Pre-trained Transformers}
+The quantization method underlying many GGUF 4-bit formats.
+@*@url{https://arxiv.org/abs/2210.17323}
+
+@item llama.cpp GGUF format specification and k-quant implementation
+The definitive reference for GGUF encoding, the Q4_K_M block format,
+scale and zero-point layout, and the mixed-precision approach for
+attention vs. feed-forward layers.
+@*@url{https://github.com/ggml-org/llama.cpp/blob/master/docs/gguf.md}
+@*@url{https://github.com/ggml-org/llama.cpp/pull/1684} (k-quants PR)
+
+@item Dettmers et al. (2022) --- @emph{LLM.int8(): 8-bit Matrix Multiplication for Transformers at Scale}
+Foundational work on weight quantization for inference; motivates the
+per-block scale approach used in k-quants.
+@*@url{https://arxiv.org/abs/2208.07339}
+
+@item Comparative quantization benchmarks (perplexity and speed)
+@*@url{https://github.com/ggml-org/llama.cpp/discussions/406}
+
+@end table
+
+@subsection Tokenization and BPE
+
+@table @strong
+
+@item Sennrich et al. (2016) --- @emph{Neural Machine Translation of Rare Words with Subword Units}
+The paper that adapted BPE from text compression to NLP tokenization.
+@*@url{https://arxiv.org/abs/1508.07909}
+
+@item HuggingFace NLP Course --- @emph{Byte-Pair Encoding tokenization}
+The clearest accessible explanation of the BPE training and inference
+algorithms, with worked examples.
+@*@url{https://huggingface.co/learn/llm-course/chapter6/5}
+
+@item Qwen2.5-Coder Technical Report (2024)
+Documents the 151,646-token vocabulary, training corpus (5.5T tokens),
+and special token IDs for Qwen2.5-Coder models.
+@*@url{https://arxiv.org/html/2409.12186v2}
+
+@end table
+
+@subsection Prefill, Decode, and KV Cache
+
+@table @strong
+
+@item Pope et al. (2022) --- @emph{Efficiently Scaling Transformer Inference}
+Introduces the prefill/decode split as a distinct systems-level concept and
+analyses the memory-bandwidth bottleneck in the decode phase.
+@*@url{https://arxiv.org/abs/2211.05102}
+
+@item NVIDIA Developer Blog --- @emph{Mastering LLM Techniques: Inference Optimization}
+Comprehensive treatment of TTFT, ITL, batch sizing, KV cache strategies, and
+quantization for GPU inference.
+@*@url{https://developer.nvidia.com/blog/mastering-llm-techniques-inference-optimization/}
+
+@item Redis Engineering Blog --- @emph{Prefill vs. Decode: Understanding LLM Inference Performance}
+Accessible explanation of the compute-vs-memory-bandwidth distinction between
+the two phases, with workload classification.
+@*@url{https://redis.io/blog/prefill-vs-decode/}
+
+@item Liu et al. (2023) --- @emph{Ring Attention with Blockwise Transformers}
+Analysis of O(N@sup{2}) attention complexity and methods to reduce it.
+@*@url{https://arxiv.org/abs/2310.01889}
+
+@end table
+
+@subsection Thinking / Reasoning Models
+
+@table @strong
+
+@item DeepSeek-AI (2025) --- @emph{DeepSeek-R1: Incentivizing Reasoning Capability in LLMs via Reinforcement Learning}
+The paper introducing the RL-based training approach that produces long
+chain-of-thought reasoning chains, @code{<think>} token delimiters, and the
+32,768-token maximum generation length.
+@*@url{https://arxiv.org/abs/2501.12948}
+@*Model card: @url{https://huggingface.co/deepseek-ai/DeepSeek-R1}
+
+@item Qwen Team (2025) --- @emph{Qwen3: Think Deeper, Act Faster}
+Documents Qwen3's hybrid thinking/non-thinking architecture, the
+@code{/think} and @code{/no_think} control tokens, the 38,912-token thinking
+budget, and the @code{</think>} token ID (151668).
+@*@url{https://qwenlm.github.io/blog/qwen3/}
+
+@item Wei et al. (2022) --- @emph{Chain-of-Thought Prompting Elicits Reasoning in Large Language Models}
+The foundational paper demonstrating that eliciting step-by-step reasoning
+improves model accuracy on complex tasks.
+@*@url{https://arxiv.org/abs/2201.11903}
+
+@end table
+
+@subsection Ollama Implementation
+
+@table @strong
+
+@item Ollama API Reference
+Documents @code{/api/generate} (streaming NDJSON, @code{keep_alive},
+@code{prompt_eval_count}, @code{eval_count}), @code{/api/ps}, and explicit
+model unloading via @code{keep_alive: 0}.
+@*@url{https://github.com/ollama/ollama/blob/main/docs/api.md}
+
+@item Ollama scheduler and runner source
+The Go source for the scheduler (@file{llm/server.go}),
+@code{processPending()}, LRU eviction (@code{findRunnerToUnload()}), and
+the multi-process runner architecture.
+@*@url{https://github.com/ollama/ollama/blob/main/llm/server.go}
+
+@item Ollama FAQ --- @emph{How do I keep a model loaded in memory?}
+Official documentation for @code{keep_alive} values and the
+@env{OLLAMA_KEEP_ALIVE} environment variable.
+@*@url{https://github.com/ollama/ollama/blob/main/docs/faq.md}
+
+@end table

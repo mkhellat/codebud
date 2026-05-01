@@ -44,6 +44,7 @@ This manual is divided into the following chapters:
 * Introduction::            What Codebud is and who it is for.
 * Installation::            Setting up the environment.
 * Model Management::        Downloading, selecting, and transferring LLM models.
+* LLM Execution Lifecycle:: How models load, tokenize, prefill, and generate.
 * Usage::                   Running the agent from the command line and OpenClaw.
 * Configuration::           Environment variables and config files.
 * Architecture::            How the components fit together.
@@ -58,6 +59,7 @@ This manual is divided into the following chapters:
 @include chapters/introduction.texi
 @include chapters/installation.texi
 @include chapters/model-management.texi
+@include chapters/llm-execution.texi
 @include chapters/usage.texi
 @include chapters/configuration.texi
 @include chapters/architecture.texi
