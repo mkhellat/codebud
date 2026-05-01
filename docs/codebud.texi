@@ -45,6 +45,7 @@ This manual is divided into the following chapters:
 * Installation::            Setting up the environment.
 * Model Management::        Downloading, selecting, and transferring LLM models.
 * LLM Execution Lifecycle:: How models load, tokenize, prefill, and generate.
+* Performance Benchmarking:: Concrete timing measurements with full evidence.
 * Usage::                   Running the agent from the command line and OpenClaw.
 * Configuration::           Environment variables and config files.
 * Architecture::            How the components fit together.
@@ -60,6 +61,7 @@ This manual is divided into the following chapters:
 @include chapters/installation.texi
 @include chapters/model-management.texi
 @include chapters/llm-execution.texi
+@include chapters/performance-benchmarking.texi
 @include chapters/usage.texi
 @include chapters/configuration.texi
 @include chapters/architecture.texi
