@@ -17,6 +17,18 @@ make format               # ruff format + ruff check --fix
 # Run a single test
 .venv/bin/pytest tests/test_planner.py::test_foo -v
 
+# Benchmarking (Ollama must be running, model warm)
+export OLLAMA_MODEL=qwen2.5-coder:3b-instruct-q4_K_M
+python scripts/benchmark.py              # prefill vs generation timing breakdown
+python scripts/benchmark.py --warm-first # pre-warm before measuring
+python scripts/benchmark.py --json       # include raw Ollama JSON responses
+
+# Ollama runtime management
+curl -s http://localhost:11434/api/ps | python3 -m json.tool    # which models are in RAM
+curl -s -X POST http://localhost:11434/api/generate \
+  -d '{"model":"<name>","keep_alive":0}'                        # force-unload a model
+ollama serve                                                     # start Ollama (foreground)
+
 # Run the agent (after activating or using the venv binary)
 export OLLAMA_MODEL=qwen2.5-coder:3b-instruct-q4_K_M
 codebud doctor            # verify environment before first run
@@ -128,6 +140,47 @@ sent to the planner.
 OpenClaw is the browser UI layer on top of the same `AgentCore` backbone. Once
 conversation history is solid in the CLI, `openclaw/skill.py` will maintain a
 `session_id → AgentCore` map so each browser session has its own persistent context.
+
+## Performance characteristics (measured 2026-05-01, i7-8550U, CPU-only)
+
+The planning prompt is **1,046 tokens** and dominates every request:
+
+| Phase | Time | % of total |
+|---|---|---|
+| Prefill (1046-token planning prompt) | ~58s | 87% |
+| Generation (JSON plan, ~62 tokens) | ~7.5s | 11% |
+| Python + HTTP + parse + validate + execute | ~1.4s | 2% |
+
+Prefill cost is ~57 ms per extra token at 1046-token length. The single
+highest-leverage optimisation is reducing the planning prompt length.
+Run `python scripts/benchmark.py` to measure any change.
+
+Model selection rule: use **instruct** models only (family `qwen2`).
+Thinking models (family `qwen35`, `deepseek-r1`) generate chain-of-thought
+tokens for minutes before any JSON appears — they break the planner.
+Benchmark: `qwen3.5:0.8b` took 13m35s warm for "say hello in 5 words".
+
+## llm CLI tool (Simon Willison's)
+
+Installed at `~/Downloads/[ 2 ] apps/llm/venv/bin/llm` with plugins:
+- `llm-ollama` 0.16.0 — exposes all Ollama models
+- `llm-anthropic`, `llm-gemini`
+
+Usage:
+```bash
+~/Downloads/\[ 2\ \]\ apps/llm/venv/bin/llm models list | grep -i ollama
+time ~/Downloads/\[ 2\ \]\ apps/llm/venv/bin/llm -m qwen2.5-coder:3b-instruct-q4_K_M "prompt"
+```
+
+## Documentation chapters
+
+`docs/chapters/` contains Texinfo source. Build with `make info` in `docs/`.
+
+| Chapter | File | Contents |
+|---|---|---|
+| Model Management | `model-management.texi` | Pull, list, transfer, runtime RAM management, instruct vs thinking, benchmarking |
+| LLM Execution Lifecycle | `llm-execution.texi` | All 6 phases (cold-load → unload), KV cache, BPE tokenization, thinking models, worked examples, quantization, 14 academic references |
+| Performance Benchmarking | `performance-benchmarking.texi` | 4 reproducible tests with raw Ollama JSON evidence, breakdown, assessment |
 
 ## Adding a new tool
 
