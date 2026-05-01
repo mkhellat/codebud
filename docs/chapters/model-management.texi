@@ -22,6 +22,9 @@ machine without re-downloading.
 * Switching Models::            Changing models without restarting.
 * Transferring Models::         Moving models to another machine.
 * Removing Models::             Freeing disk space.
+* Runtime Memory Management::   Inspecting and unloading models from RAM.
+* Instruct vs Thinking Models:: Choosing the right model architecture.
+* Benchmarking Models::         Measuring real speed before committing.
 * Model Troubleshooting::       What to do when things go wrong.
 * Quick Recipes::               The five commands you will use most.
 @end menu
@@ -418,6 +421,196 @@ installed model.  Verify with @command{ollama list} and @command{du -sh
 (@command{ollama pull}) if you want the model back.
 
 
+@node Runtime Memory Management
+@section Runtime Memory Management
+@cindex model unloading
+@cindex keep_alive
+@cindex RAM, freeing
+@cindex /api/ps
+
+Ollama loads a model into RAM on the first request and keeps it there for a
+@dfn{keep_alive} window (default: 5 minutes of idle time).  A second model
+requested while the first is still loaded will be loaded alongside it,
+consuming RAM for both.  On machines with limited memory this matters: you
+can inspect what is currently loaded and evict models you are not using
+without restarting Ollama.
+
+@subsection Inspecting currently loaded models
+
+The @samp{/api/ps} endpoint lists every model currently resident in RAM,
+along with its size and expiry time:
+
+@example
+curl -s http://localhost:11434/api/ps | python3 -m json.tool
+@end example
+
+Example output (two models loaded simultaneously):
+
+@example
+@{
+    "models": [
+        @{
+            "name": "qwen2.5-coder:7b-instruct-q4_K_M",
+            "size": 4605440000,
+            "expires_at": "2026-05-01T09:45:28...",
+            "details": @{ "parameter_size": "7.6B", "quantization_level": "Q4_K_M" @}
+        @},
+        @{
+            "name": "qwen2.5-coder:3b-instruct-q4_K_M",
+            "size": 2074941440,
+            "expires_at": "2026-05-01T09:44:51..."
+        @}
+    ]
+@}
+@end example
+
+For a compact one-liner showing just names and sizes in GB:
+
+@example
+curl -s http://localhost:11434/api/ps | \
+  python3 -c "
+import json, sys
+for m in json.load(sys.stdin)['models']:
+    print(m['name'], f\"@{m['size']/1e9:.1f@} GB\")
+"
+@end example
+
+@subsection Force-unloading a model from RAM
+
+To evict a specific model immediately without stopping Ollama, send a
+generate request with @samp{keep_alive} set to @code{0}:
+
+@example
+curl -s -X POST http://localhost:11434/api/generate \
+  -d '@{"model":"qwen2.5-coder:7b-instruct-q4_K_M","keep_alive":0@}'
+@end example
+
+Ollama responds with @samp{"done_reason":"unload"} and the model's weights
+are freed from RAM immediately.  The model is @emph{not deleted} from disk
+--- it can be reloaded at any time by sending a normal request.
+
+To unload several models at once, repeat the command for each:
+
+@example
+for model in qwen2.5-coder:7b-instruct-q4_K_M qwen3.5:0.8b; do
+  curl -s -X POST http://localhost:11434/api/generate \
+    -d "@{\"model\":\"$model\",\"keep_alive\":0@}" | \
+    python3 -c "import json,sys; r=json.load(sys.stdin); \
+      print(r['model'], '->', r.get('done_reason','?'))"
+done
+@end example
+
+@subsection The keep_alive lifecycle
+
+Every successful generate request resets the keep_alive timer for that model.
+Codebud's heartbeat thread exploits this: it sends a small real request every
+4 minutes so the model is never idle long enough to be evicted.
+
+@table @strong
+@item keep_alive: 0
+Evict the model from RAM immediately after this request.
+@item keep_alive: -1
+Keep the model in RAM indefinitely (until Ollama is restarted or you
+send @samp{keep_alive: 0}).
+@item keep_alive: "30m" (string)
+Keep the model for 30 minutes of idle time.
+@end table
+
+@strong{Tip:} run @command{codebud doctor} after freeing RAM to confirm that
+the model Codebud is configured to use is still reachable.
+
+
+@node Instruct vs Thinking Models
+@section Instruct vs Thinking Models
+@cindex thinking models
+@cindex chain-of-thought
+@cindex qwen3.5
+
+Not all models behave the same way.  Choosing the wrong architecture for
+Codebud's use case can make the agent appear completely broken.
+
+@table @strong
+
+@item Instruct models (recommended for Codebud)
+Examples: @code{qwen2.5-coder:3b-instruct-q4_K_M},
+@code{qwen2.5-coder:7b-instruct-q4_K_M}.
+
+These models are fine-tuned to follow instructions directly.  Given
+@samp{Output JSON only}, they do.  Response time is dominated by the
+@dfn{prefill} phase (processing the prompt) and the @dfn{generation} phase
+(producing output tokens).  On an i7-8550U: 3B produces a short plan in
+under 10 seconds when warm; 7B in under 20 seconds when warm.
+
+@item Thinking models (not suitable for Codebud)
+Examples: @code{qwen3.5:0.8b}, @code{deepseek-r1}, models with @samp{:think}
+suffix.
+
+These models emit a @code{<think>@dots{}</think>} reasoning block before the
+final answer.  The internal scratchpad can be hundreds or thousands of tokens
+long --- even for trivial prompts.  @code{qwen3.5:0.8b} (873M parameters,
+1 GB on disk) took @strong{13 minutes and 35 seconds} to say hello in 5 words
+because it thought about it for the entire duration.  The visible streaming
+text you see in @command{ollama run} is this reasoning chain, @emph{not} the
+cold-load delay --- the model was already warm.
+
+Codebud's planner prompt demands @samp{Output ONLY valid JSON}.  A thinking
+model ignores this constraint for the first several minutes of thinking tokens
+before finally emitting JSON, causing the HTTP timeout to fire first.  Do not
+use thinking models with Codebud.
+@end table
+
+@subsection Quick identification
+
+@example
+ollama show <model-name> | grep -i family
+@end example
+
+Models with family @samp{qwen35} or a @samp{think} variant in their name are
+thinking models.  Models with family @samp{qwen2} are instruct models.
+
+
+@node Benchmarking Models
+@section Benchmarking Models
+@cindex benchmarking
+@cindex llm CLI
+@cindex simonw/llm
+
+Before committing to a model, measure its warm response time with a short
+prompt.  The @command{llm} CLI tool (by Simon Willison) wraps the Ollama API
+and makes timing straightforward:
+
+@example
+# Install the Ollama plugin for llm
+# (requires llm installed in its own venv; see project Downloads directory)
+llm install llm-ollama
+@end example
+
+Time a warm response (model already loaded):
+
+@example
+time llm -m qwen2.5-coder:3b-instruct-q4_K_M \
+  "say hello in exactly 5 words"
+@end example
+
+Observed results on an i7-8550U (CPU-only, 16 GB RAM):
+
+@multitable @columnfractions .45 .20 .35
+@headitem Model @tab Warm time @tab Notes
+@item @code{qwen2.5-coder:3b-instruct-q4_K_M} @tab ~10 s @tab Recommended; direct answer
+@item @code{qwen2.5-coder:7b-instruct-q4_K_M} @tab ~17 s @tab Better reasoning; still usable
+@item @code{qwen3.5:0.8b} @tab ~8 min @tab Thinking model; unsuitable for Codebud
+@end multitable
+
+@noindent
+The first request after a cold start (model not in RAM) adds 1--5 minutes
+of loading time on top of these figures.  Subsequent requests within the
+keep_alive window use the times in the table above.
+
+@strong{Rule of thumb:} if @command{time llm -m <model> "hello"} exceeds
+30 seconds on a warm model, that model is either a thinking model or too
+large for your hardware.
+
+
 @node Model Troubleshooting
 @section Troubleshooting
 @cindex troubleshooting, models
@@ -481,6 +674,30 @@ ollama pull qwen2.5-coder:3b-instruct-q4_K_M
 @example
 export OLLAMA_MODEL=qwen2.5-coder:3b-instruct-q4_K_M
 codebud run "your task here"
+@end example
+
+@item See which models are currently in RAM
+@example
+curl -s http://localhost:11434/api/ps | python3 -m json.tool
+@end example
+
+@item Evict a specific model from RAM (keep files on disk)
+@example
+curl -s -X POST http://localhost:11434/api/generate \
+  -d '@{"model":"qwen2.5-coder:7b-instruct-q4_K_M","keep_alive":0@}'
+@end example
+
+@item Keep only the 3B model in RAM (free everything else)
+@example
+for model in qwen2.5-coder:7b-instruct-q4_K_M qwen3.5:0.8b; do
+  curl -s -X POST http://localhost:11434/api/generate \
+    -d "@{\"model\":\"$model\",\"keep_alive\":0@}" > /dev/null
+done
+@end example
+
+@item Benchmark warm response time for a model
+@example
+time llm -m qwen2.5-coder:3b-instruct-q4_K_M "say hello in 5 words"
 @end example
 
 @item Back up all models to a single archive
