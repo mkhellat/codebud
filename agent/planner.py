@@ -56,15 +56,21 @@ class LLMPlanner:
         self,
         user_message: str,
         on_chunk: Callable[[str], None] | None = None,
+        history: list[dict[str, str]] | None = None,
     ) -> dict[str, Any]:
         """Generate a plan using the LLM.
 
         Makes one primary attempt and, if parsing fails, one automatic retry
         with a stricter JSON-only prompt.  ``on_chunk`` is forwarded to the
         LLM backend to drive a live progress indicator.
+
+        ``history`` is an optional list of prior turns in the form
+        ``[{"role": "user"|"assistant", "content": str}, ...]``.  When
+        provided, the last N turns are injected into the prompt so the model
+        can see what was said and done before this request.
         """
 
-        prompt = self._build_prompt(user_message)
+        prompt = self._build_prompt(user_message, history=history)
         result = self._attempt(prompt, on_chunk=on_chunk)
         if result is not None:
             return result
@@ -132,11 +138,19 @@ User: "order me a pizza"
 {"status": "plan_error", "error": "This request cannot be fulfilled with the available tools."}
 """
 
-    def _build_prompt(self, user_message: str) -> str:
+    # Maximum number of prior turns to inject into the prompt.
+    _HISTORY_WINDOW = 6
+
+    def _build_prompt(
+        self,
+        user_message: str,
+        history: list[dict[str, str]] | None = None,
+    ) -> str:
         """Build the full planning prompt with tools, rules, examples, and request."""
 
         tool_descriptions = self.tool_registry.describe_tools()
         safety_rules = self.safety_engine.describe_rules()
+        history_block = self._format_history(history)
 
         return f"""\
 You are a precise coding-agent planner. Your ONLY job is to output a JSON plan.
@@ -162,11 +176,28 @@ RESPONSE FORMAT:
 On failure:
 {{"status": "plan_error", "error": "reason"}}
 
-{self._FEW_SHOT_EXAMPLES}
-Now respond to this request. Output JSON only.
+{self._FEW_SHOT_EXAMPLES}{history_block}Now respond to this request. Output JSON only.
 
 USER REQUEST: {user_message}
 """
+
+    def _format_history(self, history: list[dict[str, str]] | None) -> str:
+        """Render the last _HISTORY_WINDOW turns as a prompt block.
+
+        Returns an empty string when there is no history so the prompt is
+        byte-for-byte identical to the pre-history version on the first turn.
+        """
+        if not history:
+            return ""
+
+        window = history[-self._HISTORY_WINDOW :]
+        lines = ["CONVERSATION HISTORY (most recent last):\n"]
+        for turn in window:
+            role = turn.get("role", "user").upper()
+            content = turn.get("content", "").strip()
+            lines.append(f"{role}: {content}")
+        lines.append("")  # blank line before "Now respond"
+        return "\n".join(lines) + "\n"
 
     def _build_retry_prompt(self, user_message: str) -> str:
         """Minimal retry prompt used when the first attempt returned non-JSON."""

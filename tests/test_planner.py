@@ -253,3 +253,73 @@ class TestValidation:
         with patch("agent.planner.call_llm", return_value=json.dumps(bad_plan)):
             result = planner.generate_plan("do something")
         assert result["status"] == "plan_error"
+
+
+# ---------------------------------------------------------------------------
+# Conversation history tests
+# ---------------------------------------------------------------------------
+
+
+class TestConversationHistory:
+    def test_no_history_prompt_unchanged(self):
+        """Without history, the prompt must not contain the history block."""
+        planner = LLMPlanner(_make_registry(), _make_safety())
+        prompt = planner._build_prompt("do something", history=None)
+        assert "CONVERSATION HISTORY" not in prompt
+
+    def test_empty_history_prompt_unchanged(self):
+        """An empty history list must behave identically to None."""
+        planner = LLMPlanner(_make_registry(), _make_safety())
+        prompt = planner._build_prompt("do something", history=[])
+        assert "CONVERSATION HISTORY" not in prompt
+
+    def test_history_block_appears_in_prompt(self):
+        """A non-empty history must inject a CONVERSATION HISTORY block."""
+        planner = LLMPlanner(_make_registry(), _make_safety())
+        history = [
+            {"role": "user", "content": "list files"},
+            {"role": "assistant", "content": "planned: command(list files)"},
+        ]
+        prompt = planner._build_prompt("now read README.md", history=history)
+        assert "CONVERSATION HISTORY" in prompt
+        assert "list files" in prompt
+        assert "planned: command(list files)" in prompt
+
+    def test_history_appears_before_user_request(self):
+        """The history block must come before the current USER REQUEST line."""
+        planner = LLMPlanner(_make_registry(), _make_safety())
+        history = [{"role": "user", "content": "earlier turn"}]
+        prompt = planner._build_prompt("current request", history=history)
+        history_pos = prompt.index("CONVERSATION HISTORY")
+        request_pos = prompt.index("USER REQUEST")
+        assert history_pos < request_pos
+
+    def test_history_window_capped_at_six(self):
+        """Only the last _HISTORY_WINDOW turns are included, not all of them."""
+        planner = LLMPlanner(_make_registry(), _make_safety())
+        history = [
+            {"role": "user", "content": f"turn {i}"}
+            for i in range(20)
+        ]
+        prompt = planner._build_prompt("latest request", history=history)
+        # The last 6 turns (14..19) must be present
+        assert "turn 19" in prompt
+        assert "turn 14" in prompt
+        # Earlier turns must be excluded
+        assert "turn 13" not in prompt
+        assert "turn 0" not in prompt
+
+    def test_history_forwarded_through_generate_plan(self):
+        """history passed to generate_plan must reach _build_prompt."""
+        planner = LLMPlanner(_make_registry(), _make_safety())
+        captured = {}
+
+        def fake_llm(prompt, timeout=600.0, on_chunk=None):
+            captured["prompt"] = prompt
+            return json.dumps(_good_plan())
+
+        history = [{"role": "user", "content": "prior turn content xyz"}]
+        with patch("agent.planner.call_llm", fake_llm):
+            planner.generate_plan("new request", history=history)
+
+        assert "prior turn content xyz" in captured["prompt"]

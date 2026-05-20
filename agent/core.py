@@ -61,6 +61,9 @@ class AgentCore:
         # Store last user message for regeneration
         self.last_user_message = None
 
+        # Rolling conversation history: list of {"role": "user"|"assistant", "content": str}
+        self._history: list[dict[str, str]] = []
+
         # Start loading the model immediately so it's ready before the first request
         prewarm_model()
 
@@ -90,21 +93,36 @@ class AgentCore:
         indicator in the CLI without coupling display logic to this class.
         """
         self.last_user_message = message
+        self._history.append({"role": "user", "content": message})
 
-        plan_output = self.planner.generate_plan(message, on_chunk=on_chunk)
+        plan_output = self.planner.generate_plan(
+            message,
+            on_chunk=on_chunk,
+            history=self._history[:-1],  # exclude the turn we just appended
+        )
 
         # If planner failed, return error
         if plan_output.get("status") != "ok":
-            return {
-                "status": "plan_error",
-                "error": plan_output.get("error", "Unknown planning error"),
-            }
+            error = plan_output.get("error", "Unknown planning error")
+            self._history.append({"role": "assistant", "content": f"plan_error: {error}"})
+            return {"status": "plan_error", "error": error}
 
         # Validate plan structure
         if not self._validate_plan(plan_output):
+            self._history.append({"role": "assistant", "content": "plan_error: malformed plan"})
             return {"status": "plan_error", "error": "Planner returned malformed plan"}
 
+        # Record a compact assistant turn so the model sees what it planned
+        step_summaries = ", ".join(
+            f"{s['tool']}({s.get('description', '')})" for s in plan_output.get("plan", [])
+        )
+        self._history.append({"role": "assistant", "content": f"planned: {step_summaries}"})
+
         return plan_output
+
+    def clear_history(self) -> None:
+        """Wipe the conversation history (used by /clear in chat mode)."""
+        self._history.clear()
 
     def regenerate(self, payload: dict[str, Any]) -> dict[str, Any]:
         """
