@@ -177,35 +177,76 @@ def cmd_chat(args):
                 print_error(err, label="Plan error")
                 continue
 
-            print_plan(plan, verbose=args.verbose)
-            steps = plan.get("plan", [])
+            # --- plan review loop: accept / revise / skip ---
+            while True:
+                print_plan(plan, verbose=args.verbose)
+                try:
+                    review = input(
+                        "  [y] execute  [r] revise  [r: feedback] revise with note  [n] skip  "
+                    ).strip()
+                except (EOFError, KeyboardInterrupt):
+                    print(file=sys.stderr)
+                    review = "n"
 
-            for i, step in enumerate(steps, 1):
-                print_step_header(i, step)
-                approval = input(f"  Execute step {i}? [y/N/a(all)/q(quit)] ").strip().lower()
-                if approval == "q":
-                    break
-                if approval == "a":
-                    for j, s in enumerate(steps[i - 1 :], i):
-                        print_step_header(j, s)
-                        result = agent.executor.execute_plan({"status": "ok", "plan": [s]})
-                        if result.get("status") == "ok":
-                            out = result["results"].get(s["id"], {})
-                            print_step_result(out, verbose=args.verbose)
-                        else:
-                            print_error(str(result), label="Execution error")
-                    break
-                if not approval.startswith("y"):
+                if review.lower() == "n" or review == "":
                     print("  -- skipped", file=sys.stderr)
-                    continue
-
-                result = agent.executor.execute_plan({"status": "ok", "plan": [step]})
-                if result.get("status") == "ok":
-                    out = result["results"].get(step["id"], {})
-                    print_step_result(out, verbose=args.verbose)
-                else:
-                    print_error(str(result), label="Execution error")
                     break
+
+                if review.lower().startswith("r"):
+                    feedback = review[1:].lstrip(": ").strip()
+                    revision_msg = message if not feedback else f"{message} (revision note: {feedback})"
+                    print(file=sys.stderr)
+                    prog = ProgressIndicator(no_progress=_no_progress(args))
+                    prog.start()
+                    try:
+                        plan = agent.handle_user_message(revision_msg, on_chunk=prog.on_chunk)
+                    finally:
+                        prog.stop()
+                    if plan.get("status") == "chat_reply":
+                        print(f"\nCodebud: {plan.get('reply', '')}\n", flush=True)
+                        break
+                    if plan.get("status") != "ok":
+                        err = plan.get("error", "unknown error")
+                        print_plan_error(err)
+                        print_error(err, label="Plan error")
+                        break
+                    continue  # show revised plan for another review
+
+                # y / yes / anything else → proceed to execution
+                steps = plan.get("plan", [])
+                for i, step in enumerate(steps, 1):
+                    print_step_header(i, step)
+                    try:
+                        step_approval = input(
+                            f"  Execute step {i}? [y/N/a(all)/q(quit)] "
+                        ).strip().lower()
+                    except (EOFError, KeyboardInterrupt):
+                        step_approval = "q"
+
+                    if step_approval == "q":
+                        break
+                    if step_approval == "a":
+                        for j, s in enumerate(steps[i - 1 :], i):
+                            print_step_header(j, s)
+                            result = agent.executor.execute_plan({"status": "ok", "plan": [s]})
+                            if result.get("status") == "ok":
+                                out = result["results"].get(s["id"], {})
+                                print_step_result(out, verbose=args.verbose)
+                            else:
+                                print_error(str(result), label="Execution error")
+                        break
+                    if not step_approval.startswith("y"):
+                        print("  -- skipped", file=sys.stderr)
+                        continue
+
+                    result = agent.executor.execute_plan({"status": "ok", "plan": [step]})
+                    if result.get("status") == "ok":
+                        out = result["results"].get(step["id"], {})
+                        print_step_result(out, verbose=args.verbose)
+                    else:
+                        print_error(str(result), label="Execution error")
+                        break
+                break  # done executing — exit review loop
 
             print(file=sys.stderr)
     finally:
