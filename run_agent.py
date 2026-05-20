@@ -63,6 +63,10 @@ def cmd_run(args):
         finally:
             prog.stop()
 
+        if plan.get("status") == "chat_reply":
+            print(plan.get("reply", ""), flush=True)
+            return
+
         if plan.get("status") != "ok":
             err = plan.get("error", "unknown error")
             print_plan_error(err)
@@ -103,6 +107,10 @@ def cmd_plan(args):
             plan = agent.handle_user_message(args.message, on_chunk=prog.on_chunk)
         finally:
             prog.stop()
+
+        if plan.get("status") == "chat_reply":
+            print(plan.get("reply", ""), flush=True)
+            return
 
         if plan.get("status") != "ok":
             err = plan.get("error", "unknown error")
@@ -158,6 +166,10 @@ def cmd_chat(args):
                 plan = agent.handle_user_message(message, on_chunk=prog.on_chunk)
             finally:
                 prog.stop()
+
+            if plan.get("status") == "chat_reply":
+                print(f"\nCodebud: {plan.get('reply', '')}\n", flush=True)
+                continue
 
             if plan.get("status") != "ok":
                 err = plan.get("error", "unknown error")

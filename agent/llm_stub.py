@@ -83,6 +83,32 @@ def call_llm(
     return ""
 
 
+def call_llm_plain(
+    user_message: str,
+    history: list[dict[str, str]] | None = None,
+    on_chunk: Callable[[str], None] | None = None,
+) -> str:
+    """Send a conversational (non-JSON) prompt to the LLM and return plain text.
+
+    Used as a fallback when the planner cannot fulfil the user's request so the
+    agent can still give a helpful natural-language reply.
+    """
+    history_lines = ""
+    if history:
+        history_lines = "\n".join(
+            f"{t['role'].capitalize()}: {t['content']}" for t in history[-6:]
+        )
+        history_lines = f"Conversation so far:\n{history_lines}\n\n"
+
+    prompt = (
+        f"You are a helpful coding assistant.\n\n"
+        f"{history_lines}"
+        f"User: {user_message}\n"
+        f"Assistant:"
+    )
+    return call_llm(prompt, on_chunk=on_chunk)
+
+
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------

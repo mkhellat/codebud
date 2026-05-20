@@ -28,7 +28,7 @@ from collections.abc import Callable
 from typing import Any
 
 from .executor import Executor
-from .llm_stub import ModelHeartbeat, prewarm_model
+from .llm_stub import ModelHeartbeat, call_llm_plain, prewarm_model
 from .memory import MemoryStore
 from .planner import LLMPlanner
 from .safety import SafetyEngine
@@ -101,11 +101,11 @@ class AgentCore:
             history=self._history[:-1],  # exclude the turn we just appended
         )
 
-        # If planner failed, return error
+        # If planner failed, fall back to a plain-text conversational reply
         if plan_output.get("status") != "ok":
-            error = plan_output.get("error", "Unknown planning error")
-            self._history.append({"role": "assistant", "content": f"plan_error: {error}"})
-            return {"status": "plan_error", "error": error}
+            reply = call_llm_plain(message, history=self._history[:-1], on_chunk=on_chunk)
+            self._history.append({"role": "assistant", "content": reply or "(no reply)"})
+            return {"status": "chat_reply", "reply": reply}
 
         # Validate plan structure
         if not self._validate_plan(plan_output):
