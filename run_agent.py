@@ -131,6 +131,19 @@ def cmd_plan(args):
 # ---------------------------------------------------------------------------
 
 
+_CHAT_HELP = """\
+Slash commands (type /cmd and press Enter):
+  /help      — show this message
+  /history   — show the conversation history kept in memory
+  /clear     — wipe conversation history and start fresh
+  /undo      — remove the last turn from history
+  /doctor    — run environment health checks
+  /model     — show the active Ollama model
+  /plan      — re-show the last plan (if any)
+  quit / exit / q — end the session
+"""
+
+
 def cmd_chat(args):
     from agent.cli.display import (
         ProgressIndicator,
@@ -148,17 +161,72 @@ def cmd_chat(args):
         pass
 
     agent = _make_agent()
-    print("Codebud chat — type your request, or 'quit' to exit.\n", file=sys.stderr)
+    model_name = os.environ.get("OLLAMA_MODEL", "(not set)")
+    print(
+        f"Codebud chat  |  model: {model_name}  |  /help for commands\n",
+        file=sys.stderr,
+    )
+
+    turn = 0
+    last_plan = None
 
     try:
         while True:
             try:
-                message = input("You: ").strip()
+                message = input(f"[{turn + 1}] You: ").strip()
             except (EOFError, KeyboardInterrupt):
                 print(file=sys.stderr)
                 break
             if not message or message.lower() in ("quit", "exit", "q"):
                 break
+
+            # --- slash command handling ---
+            if message.startswith("/"):
+                cmd = message.split()[0].lower()
+                if cmd == "/help":
+                    print(_CHAT_HELP, file=sys.stderr)
+                    continue
+                if cmd == "/clear":
+                    agent.clear_history()
+                    last_plan = None
+                    turn = 0
+                    print("  History cleared.\n", file=sys.stderr)
+                    continue
+                if cmd == "/history":
+                    if not agent._history:
+                        print("  (no history yet)\n", file=sys.stderr)
+                    else:
+                        for i, t in enumerate(agent._history, 1):
+                            role = t["role"].upper()
+                            print(f"  [{i}] {role}: {t['content'][:120]}", file=sys.stderr)
+                        print(file=sys.stderr)
+                    continue
+                if cmd == "/undo":
+                    if len(agent._history) >= 2:
+                        agent._history.pop()
+                        agent._history.pop()
+                        turn = max(0, turn - 1)
+                        print("  Last turn removed.\n", file=sys.stderr)
+                    else:
+                        agent._history.clear()
+                        turn = 0
+                        print("  History cleared (nothing left to undo).\n", file=sys.stderr)
+                    continue
+                if cmd == "/doctor":
+                    from agent.cli.doctor import run_doctor
+                    run_doctor()
+                    continue
+                if cmd == "/model":
+                    print(f"  Active model: {model_name}\n", file=sys.stderr)
+                    continue
+                if cmd == "/plan":
+                    if last_plan:
+                        print_plan(last_plan, verbose=args.verbose)
+                    else:
+                        print("  (no plan yet)\n", file=sys.stderr)
+                    continue
+                print(f"  Unknown command: {cmd}  (try /help)\n", file=sys.stderr)
+                continue
 
             prog = ProgressIndicator(no_progress=_no_progress(args))
             prog.start()
@@ -166,6 +234,8 @@ def cmd_chat(args):
                 plan = agent.handle_user_message(message, on_chunk=prog.on_chunk)
             finally:
                 prog.stop()
+
+            turn += 1
 
             if plan.get("status") == "chat_reply":
                 print(f"\nCodebud: {plan.get('reply', '')}\n", flush=True)
@@ -177,6 +247,7 @@ def cmd_chat(args):
                 print_error(err, label="Plan error")
                 continue
 
+            last_plan = plan
             # --- plan review loop: accept / revise / skip ---
             while True:
                 print_plan(plan, verbose=args.verbose)
