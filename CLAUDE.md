@@ -33,7 +33,7 @@ ollama serve                                                     # start Ollama 
 export OLLAMA_MODEL=qwen2.5-coder:3b-instruct-q4_K_M
 codebud doctor            # verify environment before first run
 codebud run "your task"   # plan + auto-execute
-codebud run -i "your task" # plan + interactive per-step approval (planned)
+codebud run -i "your task" # plan + interactive per-step approval (step 6 — not yet)
 codebud plan "your task"  # plan only (add --json for raw JSON output)
 codebud chat              # interactive REPL — continuous conversation with history
 codebud models            # list downloaded Ollama models
@@ -123,15 +123,35 @@ All tools are registered in `ToolRegistry.__init__`. Each tool implements `.run(
 
 After each successful step, `MemoryStore.add_snapshot()` appends a JSON record to `data/memory/entries.json`. The file is loaded on startup so history persists across runs.
 
-### Conversation history (in progress)
+### Conversation history
 
-`AgentCore` will maintain `self._history: list[dict]` — a rolling window of the
-last N user/assistant turns. Each turn is passed to `LLMPlanner.generate_plan(history=...)`
-and injected into the prompt so the model sees what it said and did before.
+`AgentCore` maintains `self._history: list[dict]` — a rolling window of
+`{"role": "user"|"assistant", "content": str}` turns. Each call to
+`handle_user_message()` appends the user turn, passes the prior context to
+`LLMPlanner.generate_plan(history=...)`, then records the assistant's compact
+plan summary. The last `_HISTORY_WINDOW` (6) turns are injected into the
+planning prompt as a `CONVERSATION HISTORY` block just before the `USER REQUEST`
+line. First-turn behaviour is byte-for-byte identical to the pre-history form.
+
+`call_llm_plain()` in `llm_stub.py` is a plain-text (non-JSON) variant used
+when the planner returns `plan_error` — it sends a conversational prompt so the
+agent can still give a helpful reply instead of a cold error message.
+The response comes back as `{"status": "chat_reply", "reply": "..."}`.
+
+`AgentCore.clear_history()` wipes `_history` (wired to `/clear` in chat mode).
 
 Inside `codebud chat`, `/`-prefixed inputs are parsed as local slash commands
-(`/help`, `/history`, `/clear`, `/plan`, `/undo`, `/doctor`, `/model`) and never
-sent to the planner.
+and never sent to the planner:
+
+| Command | Effect |
+|---|---|
+| `/help` | print command reference |
+| `/history` | dump all remembered turns (first 120 chars each) |
+| `/clear` | wipe history, reset turn counter |
+| `/undo` | remove the last user+assistant turn pair |
+| `/doctor` | run environment health checks inline |
+| `/model` | print the active `OLLAMA_MODEL` |
+| `/plan` | re-display the last received plan |
 
 ### OpenClaw integration (`openclaw/SKILL.md`)
 
