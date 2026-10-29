@@ -107,13 +107,14 @@ jobs:
         with:
           usesh: true
           prepare: |
-            # rust + cargo in case pyrage has no FreeBSD wheel and builds from source.
-            # pip comes from ensurepip, avoiding guessing the versioned py3NN-pip name.
-            pkg install -y autoconf automake texinfo gmake git python3 rust
+            pkg install -y autoconf automake texinfo gmake git python3
             python3 -m ensurepip --upgrade
+            # Only the pure-Python deps with universal wheels, so nothing is
+            # compiled in the VM (numpy and pyrage would build from source and
+            # time out). Their tests (rag, crypto) skip when absent, so the
+            # FreeBSD job verifies the core build and the offline suite.
             python3 -m pip install \
-              "requests>=2.28" "prompt_toolkit>=3.0" "pytest>=8.0" \
-              "numpy>=1.24" "pyrage>=1.2"
+              "requests>=2.28" "prompt_toolkit>=3.0" "pytest>=8.0"
           run: |
             ./bootstrap
             ./configure PYTHON="$(command -v python3)"
