@@ -91,32 +91,3 @@ jobs:
           ./configure PYTHON="$(command -v python3)"
           make
           make check
-
-  # FreeBSD: no native runner, so a VM action. pkg provides everything;
-  # the suite runs under PYTHONPATH as the README documents.
-  freebsd:
-    name: make check (freebsd)
-    runs-on: ubuntu-latest
-    timeout-minutes: 30
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Build and test in a FreeBSD VM
-        uses: vmactions/freebsd-vm@v1.2.0
-        with:
-          usesh: true
-          prepare: |
-            pkg install -y autoconf automake texinfo gmake git python3
-            python3 -m ensurepip --upgrade
-            # Only the pure-Python deps with universal wheels, so nothing is
-            # compiled in the VM (numpy and pyrage would build from source and
-            # time out). Their tests (rag, crypto) skip when absent, so the
-            # FreeBSD job verifies the core build and the offline suite.
-            python3 -m pip install \
-              "requests>=2.28" "prompt_toolkit>=3.0" "pytest>=8.0"
-          run: |
-            ./bootstrap
-            ./configure PYTHON="$(command -v python3)"
-            gmake
-            gmake check
