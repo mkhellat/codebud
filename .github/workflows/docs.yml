@@ -1,0 +1,94 @@
+
+name: Documentation
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "docs/**"
+      - ".github/workflows/docs.yml"
+      - "configure.ac"
+      - "Makefile.am"
+      - "Makefile.in"
+      - "bootstrap"
+      - "llms.txt"
+  pull_request:
+    branches: [main]
+    paths:
+      - "docs/**"
+      - ".github/workflows/docs.yml"
+      - "configure.ac"
+      - "Makefile.am"
+      - "Makefile.in"
+      - "bootstrap"
+      - "llms.txt"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: docs-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y autoconf automake texinfo
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install configure dependencies
+        run: |
+          python -m pip install requests prompt_toolkit
+
+      - name: Configure and build split HTML
+        run: |
+          ./bootstrap
+          ./configure PYTHON="$(command -v python)"
+          make html
+          test -f docs/codebud.html/index.html
+
+      - name: Prepare site
+        run: |
+          mkdir -p site
+          cp -a docs/codebud_html/. site/
+          cp llms.txt site/llms.txt
+          touch site/.nojekyll
+          test -f site/index.html
+          test -f site/llms.txt
+
+      - name: Upload Pages artifact
+        if: github.event_name != 'pull_request'
+        uses: actions/upload-pages-artifact@v4
+        with:
+          path: site
+
+  deploy:
+    if: github.event_name != 'pull_request'
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Configure GitHub Pages
+        uses: actions/configure-pages@v5
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
