@@ -135,6 +135,8 @@ tests/
 │                                settings (any privacy level)
 ├── test_steps.py                shared step loop: approval policies, the
 │                                first failure stops the run
+├── test_terminal_safety.py     control characters in replies, output and
+│                                errors are escaped, not obeyed
 └── test_tools.py                tool and doctor regression tests
 @end example
 
