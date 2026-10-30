@@ -535,7 +535,11 @@ or outside Codebud.
 @subheading Where isolation is not available
 
 Without bubblewrap, @command{unshare} (util-linux) still cuts the network,
-but leaves the file system unprotected.  Where neither works --- macOS,
+but leaves the file system unprotected --- and a step that declares it
+needs the network then has no isolation at all, which Codebud warns about
+once per run (at @code{locked} such steps are refused anyway).  Which
+isolation works is detected once, when the first step runs; restart
+Codebud after installing bubblewrap.  Where neither works --- macOS,
 the BSDs, containers, systems that block unprivileged user namespaces
 (older Debian, Ubuntu 24.04 and later without an AppArmor profile for
 @command{bwrap}) --- steps are not isolated: at @code{private} Codebud

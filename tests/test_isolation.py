@@ -304,3 +304,22 @@ def test_a_step_cannot_reach_the_session_bus(project, home):
     bus = f"/run/user/{os.getuid()}/bus"
     result = Sandbox().run_command(f"ls {bus}")
     assert result["returncode"] != 0 and bus not in result["stdout"]
+
+
+def test_a_network_step_under_unshare_warns_it_is_unisolated(project, home, monkeypatch, caplog):
+    # Security review (low): this ran with no isolation and no notice.
+    monkeypatch.setattr(isolation, "available", lambda: "unshare")
+    monkeypatch.setattr(isolation, "_warned_unshare_network", False)
+    argv, refusal = isolation.prepare(["pip", "download", "x"], network=True)
+    assert refusal is None and argv == ["pip", "download", "x"]
+    assert "runs without isolation" in caplog.text
+    caplog.clear()
+    isolation.prepare(["pip", "download", "y"], network=True)
+    assert "runs without isolation" not in caplog.text  # once per run
+
+
+def test_a_network_step_under_unshare_is_still_refused_when_locked(project, home, monkeypatch):
+    monkeypatch.setattr(isolation, "available", lambda: "unshare")
+    monkeypatch.setenv("CODEBUD_PRIVACY", "locked")
+    argv, refusal = isolation.prepare(["pip", "download", "x"], network=True)
+    assert argv is None and refusal

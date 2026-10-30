@@ -49,6 +49,7 @@ HIDDEN_DIRS = (
 HIDDEN_FILES = (".netrc", ".pgpass", ".pypirc", ".npmrc", ".git-credentials")
 
 _warned = False
+_warned_unshare_network = False
 
 
 @lru_cache(maxsize=1)
@@ -190,4 +191,15 @@ def prepare(argv: list[str], network: bool = False) -> tuple[list[str] | None, s
                 "Install bubblewrap for network-free, project-only steps."
             )
         return argv, None
+    if kind == "unshare" and network:
+        # unshare can only cut the network; a step that needs it gets no
+        # isolation at all here, so say so, as above (security review, low).
+        global _warned_unshare_network
+        if not _warned_unshare_network:
+            _warned_unshare_network = True
+            logger.warning(
+                "A step that needs the network runs without isolation here: only "
+                "unshare is available, and it can only cut the network. Install "
+                "bubblewrap for project-only writes and hidden secrets."
+            )
     return wrap(argv, project_root(), network, kind), None
