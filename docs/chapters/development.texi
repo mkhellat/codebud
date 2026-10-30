@@ -14,6 +14,7 @@ conventions used throughout the codebase.
 * Tuning the Planner Prompt::   Improving JSON reliability.
 * Adding a Safety Rule::        Expanding or restricting what runs.
 * Project Conventions::         Naming, imports, type hints, comments.
+* Starting from a Clean Checkout:: Clean, build, test and run from scratch.
 * Versioning::                  When and how the version number changes.
 @end menu
 
@@ -437,6 +438,73 @@ per tested step.  No @code{Co-Authored-By} trailer.
 Write at least one test before adding a new feature.  All tests must pass
 without a live Ollama server.
 @end table
+
+
+@node Starting from a Clean Checkout
+@section Starting from a Clean Checkout
+@cindex clean checkout
+@cindex maintainer-clean
+
+The steps below take a working copy back to its sources, rebuild it, run
+the tests and start Codebud.  None of them touch your Codebud data
+(@file{~/.local/share/codebud}) or configuration
+(@file{~/.config/codebud}).
+
+@strong{Do not use @command{git clean -dfx} to reset the tree.}  It
+deletes every file Git does not track, including directories that are
+deliberately kept out of Git and exist nowhere else, such as a local
+@file{notes/} directory or editor and agent settings (@file{.claude/}).
+Clean with the build system instead.
+
+@subheading 1. Clean the build products
+
+@example
+make maintainer-clean       @r{# configure, Makefiles, the built manual}
+rm -rf autom4te.cache build-aux build src/codebud.egg-info \
+       codebud-*.tar.gz configure~ .pytest_cache .ruff_cache
+find src tests -name __pycache__ -type d -prune -exec rm -rf @{@} +
+@end example
+
+@noindent
+@command{make maintainer-clean} needs a configured tree; if there is no
+@file{Makefile}, skip it.  To rebuild the Python environment as well
+(this needs the network):
+
+@example
+rm -rf .venv && python -m venv .venv
+.venv/bin/pip install -e ".[rag,crypto]" --group dev
+@end example
+
+@subheading 2. Build and test
+
+@example
+./bootstrap
+./configure PYTHON="$PWD/.venv/bin/python"
+make
+make check        @r{# the offline test suite; no Ollama needed}
+make distcheck    @r{# optional: the full release check}
+@end example
+
+@noindent
+The summary at the end of @command{configure} shows what was found
+(@code{numpy}, @code{pyrage}, @command{bwrap}, @command{ollama}); the
+tests that need a missing optional module are skipped, not failed.
+
+@subheading 3. Start Ollama and run Codebud
+
+@example
+ollama serve > /tmp/ollama.log 2>&1 &   @r{# unless it runs as a service}
+ollama list                             @r{# the models you have}
+export PATH="$PWD/.venv/bin:$PATH"
+export OLLAMA_MODEL=qwen2.5-coder:7b-instruct-q4_K_M
+codebud doctor
+codebud chat
+@end example
+
+@noindent
+Try it on another project rather than on Codebud's own checkout: there
+Codebud warns, correctly, that edits can change the code its next run
+executes (@pxref{What Is Not Protected}).
 
 
 @node Versioning
