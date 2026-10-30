@@ -59,6 +59,13 @@ AS_IF([test "x$enable_dependency_check" != xno], [
 or point configure at a Python that has them: ./configure PYTHON=/path/to/python3
 (--disable-dependency-check skips this check, e.g. for distribution builds)])
   ], [AC_MSG_RESULT([yes])])
+  # Older requests have known credential leaks (CVE-2023-32681,
+  # CVE-2024-35195, CVE-2024-47081); distributions may backport the fixes,
+  # so warn rather than fail.
+  AS_IF(["$PYTHON" -c "import requests, sys; v = tuple(int(x) for x in requests.__version__.split('.')[[:3]] if x.isdigit()); sys.exit(v < (2, 32, 4))" >/dev/null 2>&1], [],
+    [AC_MSG_WARN([requests is older than 2.32.4, which fixes credential leaks
+(CVE-2023-32681, CVE-2024-35195, CVE-2024-47081); upgrade it unless your
+distribution has backported those fixes])])
 ])
 
 # numpy is optional: only project search (codebud index) needs it.

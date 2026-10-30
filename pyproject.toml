@@ -29,7 +29,9 @@ classifiers = [
 requires-python = ">=3.10"
 dependencies = [
     "prompt_toolkit>=3.0",
-    "requests>=2.28",
+    # 2.32.4: fixes CVE-2023-32681 (Proxy-Authorization leak on redirect),
+    # CVE-2024-35195 and CVE-2024-47081 (.netrc credentials leak).
+    "requests>=2.32.4",
     # config.toml: tomllib is in the standard library from Python 3.11.
     "tomli>=1.1; python_version < '3.11'",
 ]

@@ -271,7 +271,10 @@ sudo make install            @r{# into /usr/local by default}
 
 @command{configure} needs Python 3.10 or later with the @code{requests}
 and @code{prompt_toolkit} modules (and, on 3.10 only, @code{tomli}), and
-prints the package names for your system if they are missing.  It only warns if @command{ollama} is not
+prints the package names for your system if they are missing.  It warns
+if @code{requests} is older than 2.32.4, which fixes credential leaks
+(CVE-2023-32681, CVE-2024-35195, CVE-2024-47081); a distribution package
+with those fixes backported is fine.  It only warns if @command{ollama} is not
 found, since Ollama may run on another machine, if @code{numpy} is
 missing, since only project search needs it, if @code{pyrage} is
 missing, since only encryption at rest needs it, and if @command{bwrap}
