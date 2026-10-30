@@ -50,7 +50,9 @@ class Target:
 
     @classmethod
     def parse(cls, raw: str) -> "Target":
-        text = raw.strip().lower()
+        # A trailing dot is a fully qualified name ("prod.example.com."):
+        # strip it as matches() does, or the entry silently matches nothing.
+        text = raw.strip().lower().rstrip(".")
         try:
             return cls(text, ipaddress.ip_network(text, strict=False))
         except ValueError:

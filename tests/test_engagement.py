@@ -131,3 +131,16 @@ def test_naive_times_are_treated_as_utc(tmp_path):
 
 def test_no_window_is_always_open(tmp_path):
     assert load(_write(tmp_path, SAMPLE)).in_window()
+
+
+def test_a_fully_qualified_exclusion_still_excludes(tmp_path):
+    # Security review (low): "prod.example.com." in out_of_scope was ignored.
+    path = _write(
+        tmp_path,
+        'in_scope = ["example.com."]\nout_of_scope = ["prod.example.com."]\n',
+    )
+    eng = load(path)
+    assert eng.covers("app.example.com")
+    assert not eng.covers("prod.example.com")
+    assert not eng.covers("prod.example.com.")
+    assert eng.out_of_scope_reason("prod.example.com")
