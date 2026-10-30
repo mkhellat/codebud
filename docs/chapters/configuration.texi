@@ -836,6 +836,9 @@ codebud doctor
 @cindex .codebud directory
 
 Codebud's locations do not depend on the directory it is started from.
+A relative @env{XDG_DATA_HOME}, @env{XDG_CONFIG_HOME} or
+@env{XDG_RUNTIME_DIR} is ignored, with a warning, as the XDG Base
+Directory specification requires.
 
 @multitable @columnfractions .38 .62
 @headitem Location @tab Contents

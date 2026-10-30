@@ -44,8 +44,17 @@ PROFILE_POLICY_DIR: Path | None = None
 
 
 def _xdg(var: str, fallback: str) -> Path:
-    base = os.environ.get(var) or os.path.join(os.path.expanduser("~"), fallback)
-    return Path(base) / APP
+    """$``var``/codebud, or ~/``fallback``/codebud.
+
+    A relative value is ignored, as the XDG Base Directory spec requires:
+    honouring it would put codebud's data -- or its keys -- inside whatever
+    directory it was started from (security review, low).
+    """
+    base = os.environ.get(var)
+    if base and not os.path.isabs(base):
+        _warn_once(f"Ignoring {var}={base!r}: it must be an absolute path")
+        base = None
+    return Path(base or os.path.join(os.path.expanduser("~"), fallback)) / APP
 
 
 def data_dir() -> Path:

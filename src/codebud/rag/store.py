@@ -150,7 +150,7 @@ def _sweep_stale(parent: Path) -> None:
 def _runtime_dir() -> Path:
     """A new private directory in RAM for a decrypted index (D14g)."""
     base = os.environ.get("XDG_RUNTIME_DIR")
-    if not base or not os.path.isdir(base):
+    if not base or not os.path.isabs(base) or not os.path.isdir(base):
         raise crypto.CryptoError(
             "an encrypted project index is used from a RAM-backed directory, "
             "$XDG_RUNTIME_DIR, which is not set here; without it the index would "

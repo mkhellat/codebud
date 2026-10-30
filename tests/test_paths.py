@@ -14,6 +14,8 @@ directory codebud is started from:
 import json
 from pathlib import Path
 
+import pytest
+
 from codebud import paths
 
 
@@ -248,3 +250,15 @@ def test_version_from_source_tree_without_installed_metadata(monkeypatch):
 
     monkeypatch.setattr(importlib.metadata, "version", not_installed)
     assert codebud._find_version() == _pyproject_version()
+
+
+@pytest.mark.parametrize(
+    "var, getter", [("XDG_DATA_HOME", "data_dir"), ("XDG_CONFIG_HOME", "config_dir")]
+)
+def test_a_relative_xdg_path_is_ignored(monkeypatch, caplog, var, getter):
+    # XDG spec; honouring it put data or keys in the current directory.
+    monkeypatch.setenv(var, "relative/dir")
+    result = getattr(paths, getter)()
+    assert result.is_absolute()
+    assert "relative" not in result.parts
+    assert "must be an absolute path" in caplog.text
