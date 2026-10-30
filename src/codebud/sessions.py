@@ -354,6 +354,27 @@ def _older_than(updated: str, days: int) -> bool:
     return when < datetime.now(timezone.utc) - timedelta(days=days)
 
 
+def unreadable_sessions() -> list[str]:
+    """IDs of session files list_sessions() skips: corrupt, undecryptable,
+    or holding an id that does not match their name. Their age is unknown,
+    so only a purge of everything removes them (security review, low)."""
+    if not os.path.isdir(_dir()):
+        return []
+    found = []
+    for entry in sorted(os.listdir(_dir())):
+        stem = entry[: -len(".json")]
+        if not entry.endswith(".json") or entry.startswith(".") or not valid_id(stem):
+            continue
+        try:
+            data = _read(stem)
+        except SessionError:
+            found.append(stem)
+            continue
+        if data.get("id") != stem:
+            found.append(stem)
+    return found
+
+
 def deletion_candidates(older_than_days: int | None = None):
     """(sessions to delete, IDs skipped because they are open) -- by age if given.
 

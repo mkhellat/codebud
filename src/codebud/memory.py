@@ -219,8 +219,25 @@ class MemoryStore:
 
 
 def history_files() -> list[str]:
-    """The step-history files that exist (what `codebud history --purge` removes)."""
-    return [p for p in (_path(),) if os.path.exists(p)]
+    """The step-history files that exist (what `codebud history --purge` removes).
+
+    Besides entries.jsonl: the pre-JSONL entries.json (or its
+    entries.json.migrated copy) and quarantined *.corrupt-* files, which
+    hold the same history in plaintext and would otherwise survive a purge
+    (security review, low).
+    """
+    found = [_path()]
+    legacy = os.path.splitext(_path())[0] + ".json"
+    found += [legacy, f"{legacy}.migrated"]
+    directory = os.path.dirname(_path())
+    if os.path.isdir(directory):
+        stems = (os.path.basename(_path()), os.path.basename(legacy))
+        found += sorted(
+            os.path.join(directory, name)
+            for name in os.listdir(directory)
+            if ".corrupt-" in name and name.startswith(stems)
+        )
+    return [p for p in found if os.path.isfile(p)]
 
 
 def purge() -> list[str]:

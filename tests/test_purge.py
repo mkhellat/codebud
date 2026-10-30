@@ -201,3 +201,58 @@ def test_deleting_an_open_session_is_refused_before_asking(capsys):
         assert _ids() == [busy.id]
     finally:
         busy.close()
+
+
+# --- purge leaves no plaintext behind (security review, low) ----------------
+
+
+def test_history_purge_takes_legacy_and_quarantined_copies(capsys):
+    memory.MemoryStore().add_snapshot({"tool": "command"}, {"returncode": 0})
+    directory = paths.data_dir() / "memory"
+    extras = [
+        directory / "entries.json.migrated",
+        directory / "entries.jsonl.corrupt-20260101T000000Z",
+        directory / "entries.json.corrupt-20250101T000000Z",
+    ]
+    for path in extras:
+        path.write_text("[old history]")
+    unrelated = directory / "notes.txt"
+    unrelated.write_text("keep")
+    assert _codebud("history", "--purge", "--yes") == 0
+    assert not any(p.exists() for p in extras)
+    assert not (directory / "entries.jsonl").exists()
+    assert unrelated.exists()
+    out = capsys.readouterr().out
+    assert all(str(p) in out for p in extras)  # listed before deletion
+
+
+def _corrupt_session(session_id="20200101-000000-dead"):
+    path = paths.data_dir() / "sessions" / f"{session_id}.json"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text("{not json")
+    return path
+
+
+def test_purge_all_takes_unreadable_sessions(capsys):
+    readable = _session(name="ok")
+    corrupt = _corrupt_session()
+    assert _codebud("sessions", "--purge", "--yes") == 0
+    assert not corrupt.exists()
+    assert readable not in _ids()
+
+
+def test_purge_by_age_keeps_unreadable_sessions(capsys):
+    corrupt = _corrupt_session()
+    _session(name="old", days_old=40)
+    assert _codebud("sessions", "--purge", "--older-than", "30", "--yes") == 0
+    assert corrupt.exists()
+    assert "age is unknown" in capsys.readouterr().out
+
+
+def test_a_mismatched_id_session_is_unreadable_and_purged():
+    path = paths.data_dir() / "sessions" / "20200101-000000-beef.json"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps({"id": "../../elsewhere"}))
+    assert sessions.unreadable_sessions() == ["20200101-000000-beef"]
+    assert _codebud("sessions", "--purge", "--yes") == 0
+    assert not path.exists()

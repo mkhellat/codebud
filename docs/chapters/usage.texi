@@ -646,7 +646,10 @@ contacting Ollama.  @xref{MemoryStore}, for the file format and how it is
 kept safe against crashes and concurrent writers.
 
 @command{codebud history --purge} deletes the history after listing the
-file and asking (@option{--yes} to skip the question, e.g.@: in scripts).
+files and asking (@option{--yes} to skip the question, e.g.@: in scripts).
+That includes older copies of the same history kept in plain text: a
+pre-2026 @file{entries.json} or its @file{entries.json.migrated} copy,
+and any @file{*.corrupt-*} file set aside after damage.
 
 
 @node The sessions Subcommand
@@ -688,7 +691,10 @@ codebud sessions --purge --older-than 30 @r{# only those unused for 30+ days}
 @noindent
 Each lists the files it would remove and asks @samp{[y/N]}; without a
 terminal it deletes nothing unless you add @option{--yes}.  A session
-open in another chat is never deleted.  To have old sessions removed
+open in another chat is never deleted.  @option{--purge} also removes
+session files Codebud cannot read (damaged, or not decryptable with your
+key); with @option{--older-than} their age is unknown, so they are kept
+and listed instead.  To have old sessions removed
 automatically, set @code{session_retention_days} in your
 @file{config.toml} (or @env{CODEBUD_SESSION_RETENTION_DAYS}): each
 @command{chat} then starts by deleting sessions not used for that many

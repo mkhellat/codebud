@@ -37,6 +37,14 @@ def _delete_sessions(args) -> None:
         for session_id in in_use:
             print(f"(skipping {session_id}: open in a codebud chat)")
         ids = [c["id"] for c in candidates]
+        # Sessions that cannot be read (corrupt, undecryptable): a purge of
+        # everything takes them too; a purge by age cannot know theirs.
+        unreadable = sessions.unreadable_sessions()
+        if args.older_than is None:
+            ids += [i for i in unreadable if not sessions._in_use(i)]
+        else:
+            for session_id in unreadable:
+                print(f"(keeping {session_id}: it cannot be read, so its age is unknown)")
         if not ids:
             print("Nothing to delete.")
             return
