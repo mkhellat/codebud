@@ -138,3 +138,81 @@ def test_a_project_config_cannot_turn_masking_off(tmp_path, monkeypatch):
     (tmp_path / ".codebud" / "config.toml").write_text("mask_secrets = false\n")
     monkeypatch.chdir(tmp_path)
     assert settings.resolve()["CODEBUD_MASK_SECRETS"] == (True, "default")
+
+
+# --- formats added after the security review (M4, 2026-10-29) ---------------
+
+AGE_KEY = "AGE-SECRET-KEY-1" + "QQPZRY9X8GF2TVDW0S3JN54KHCE6MUA7L" + "QPZRY9X8GF2TVDW0S3JN54KH"
+STRIPE = "sk_" + "live_" + "4eC39HqLyjWDarjtT1zdp7dc"
+STRIPE_RK = "rk_" + "test_" + "4eC39HqLyjWDarjtT1zdp7dc"
+GITLAB = "glpat-" + "x" * 20
+NPM = "npm_" + "a" * 36
+HUGGINGFACE = "hf_" + "b" * 34
+SENDGRID = "SG." + "c" * 22 + "." + "d" * 43
+GOOGLE_OAUTH = "ya29." + "e" * 40
+SLACK_HOOK = "https://hooks.slack.com/services/" + "T000/B000/" + "XXXXXXXX"
+
+
+@pytest.mark.parametrize(
+    "secret",
+    [AGE_KEY, STRIPE, STRIPE_RK, GITLAB, NPM, HUGGINGFACE, SENDGRID, GOOGLE_OAUTH, SLACK_HOOK],
+)
+def test_more_token_formats_are_masked(secret):
+    assert redact(f"use {secret} now") == f"use {REDACTED} now"
+
+
+@pytest.mark.parametrize(
+    "text, secret",
+    [
+        ("aws_secret_access_key = wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY", "wJalrXUtnFEMI"),
+        ("password=hunter2hunter2", "hunter2hunter2"),
+        ("password: hunter2hunter2", "hunter2hunter2"),
+        ("  db_password: s3cr3t-value-x", "s3cr3t-value-x"),
+        ("Authorization: Basic dXNlcjpwYXNzd29yZA==", "dXNlcjpwYXNzd29yZA=="),
+        ("Authorization: token ghx0123456789abcdef", "ghx0123456789abcdef"),
+        ("mysql -u root -pSuperS3cret db", "SuperS3cret"),
+        ("curl -u alice:Pa55word https://x.example", "Pa55word"),
+        ("postgres://user:p@ss@host:5432/db", "p@ss"),
+        ("Endpoint=https;AccountName=x;AccountKey=abcdefghijklmnop123==;", "abcdefghijklmnop123"),
+        ('{"auth": "dXNlcjpwYXNzd29yZDEyMw=="}', "dXNlcjpwYXNzd29yZDEyMw=="),
+        ("db.example.com:5432:mydb:alice:Pa55w0rdLong", "Pa55w0rdLong"),
+        ('secret = "contains spaces here"', "contains spaces here"),
+        ("mytool --password=SuperS3cretVal", "SuperS3cretVal"),
+    ],
+)
+def test_more_contextual_secrets_are_masked(text, secret):
+    out = redact(text)
+    assert secret not in out and REDACTED in out
+
+
+def test_a_url_password_with_an_at_sign_is_masked_whole():
+    assert redact("postgres://user:p@ss@host:5432/db") == "postgres://user:[redacted]@host:5432/db"
+
+
+def test_pgp_and_truncated_private_keys_are_masked():
+    pgp = "-----BEGIN PGP PRIVATE KEY BLOCK-----\nlQOYBF0x\n-----END PGP PRIVATE KEY BLOCK-----"
+    assert redact(f"a\n{pgp}\nb") == f"a\n{REDACTED}\nb"
+    head = "-----BEGIN RSA PRIVATE KEY-----\nMIIEowIBAAKCAQEA\nzzzz"  # no END line
+    assert redact(f"key:\n{head}") == f"key:\n{REDACTED}"
+
+
+@pytest.mark.parametrize(
+    "line",
+    [
+        "password = self.password",
+        "max_tokens = 100000000",
+        "secret_enabled = true",
+        "token_file = /home/me/.config/tok",
+        "password: ${DB_PASSWORD}",
+        "api_key: {{ vault_api_key }}",
+        "basic functionality works fine here",
+        "The authorization step is described below",
+        "pwd = os.getcwd()",
+        "tokenizer = AutoTokenizer.from_pretrained(name)",
+        "PWD=/home/desadm/Projects/codebud",
+        "passenger_count = 12345678",
+        "user@example.com wrote this",
+    ],
+)
+def test_lines_that_only_look_secret_are_left_alone(line):
+    assert redact(line) == line

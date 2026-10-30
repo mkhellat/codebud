@@ -860,13 +860,35 @@ chmod -R go-rwx ~/.local/share/codebud
 @cindex secret masking
 @cindex [redacted]
 Secrets are masked before anything is stored: in saved chat sessions and
-in the step history, API keys and tokens in well-known formats (OpenAI
-and Anthropic @samp{sk-@dots{}}, GitHub, AWS, Slack, Google, JWTs),
-private-key blocks, @samp{Bearer} tokens, passwords in URLs, and
-literal values given to secret-looking names (@code{api_key = "@dots{}"},
-@code{DB_PASSWORD=@dots{}}) become @samp{[redacted]}.  The names stay, so
-the history still reads; ordinary code such as @code{token = get_token()}
-is left alone.  Prompts sent to the model are not changed --- only what is
+in the step history, these become @samp{[redacted]}:
+
+@itemize
+@item API keys and tokens in well-known formats: OpenAI and Anthropic
+@samp{sk-@dots{}}, Stripe @samp{sk_live_@dots{}}, GitHub, GitLab
+@samp{glpat-@dots{}}, npm, Hugging Face @samp{hf_@dots{}}, AWS, Slack
+(tokens and webhook URLs), Google (API keys and OAuth @samp{ya29.@dots{}}),
+SendGrid, JWTs, and Codebud's own age keys
+(@samp{AGE-SECRET-KEY-@dots{}});
+@item private-key blocks (PEM, OpenSSH, PGP), whole --- to the end of the
+output when the @samp{END} line is missing, as with @command{head};
+@item credentials in context: @samp{Authorization:} headers and
+@samp{Bearer} tokens, passwords in URLs (even ones containing @samp{@@}),
+@option{--password=@dots{}} style options, @code{mysql -p@var{secret}},
+@code{curl -u @var{user}:@var{password}}, Azure @samp{AccountKey=},
+Docker @samp{"auth"} values and @file{.pgpass} lines;
+@item values given to secret-looking names: quoted literals
+(@code{api_key = "@dots{}"}, @code{password: '@dots{}'}) and unquoted
+values in INI, YAML and @file{.env} lines (@code{aws_secret_access_key =
+@dots{}}, @code{password: @dots{}}, @code{DB_PASSWORD=@dots{}}).
+@end itemize
+
+@noindent
+The names stay, so the history still reads.  Ordinary code is left alone:
+a value that is a call (@code{token = get_token()}), an attribute
+(@code{password = self.password}), a number, a boolean, a
+@code{$@{@dots{}@}} or @code{@{@{@dots{}@}@}} reference or a path is not
+a secret.  Values shorter than 8 characters are not masked, since too
+many ordinary words would be.  Prompts sent to the model are not changed --- only what is
 written to disk --- so a resumed session shows @samp{[redacted]} where
 the original had a secret.  The project index is not masked: it holds
 your files' text as it is (secret files are never indexed;

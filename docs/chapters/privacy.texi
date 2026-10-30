@@ -441,9 +441,11 @@ steps are not isolated (a warning at @code{private}, refused at
 @code{locked}).
 
 @item
-@strong{Masking is pattern-based.}  It catches common token formats and
-secret-looking assignments, not every secret; the project index keeps
-your files' text as it is.
+@strong{Masking is pattern-based.}  It catches common token formats,
+private keys and secret-looking assignments (@pxref{Files and
+Directories} for the list), not every secret: a secret with no
+recognisable format or name, or shorter than 8 characters, is stored as
+it is.  The project index keeps your files' text as it is.
 
 @item
 @strong{Encryption at rest covers what Codebud stores, not what it is
