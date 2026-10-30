@@ -873,7 +873,10 @@ codebud skill install --dir @var{path}       @r{# any other directory}
 
 Installing again is harmless when the installed copy is identical.  If it
 differs --- an older version, or one you edited --- Codebud refuses and
-leaves it alone; add @option{--force} to replace it.
+leaves it alone; add @option{--force} to replace it.  A @file{SKILL.md}
+that is a symbolic link is never written through, even with
+@option{--force}, and the file is replaced all at once, never left half
+written.
 
 
 @node The models Subcommand

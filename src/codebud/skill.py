@@ -17,6 +17,8 @@ Two variants ship:
 
 from pathlib import Path
 
+from codebud.fsutil import atomic_write_text
+
 _SKILL_DIR = Path(__file__).resolve().parent / "data" / "skill"
 
 SKILL_FILES = {
@@ -61,17 +63,13 @@ def kind_for_show(agent: str | None) -> str:
     try:
         return SHOW_FOR[agent]
     except KeyError as exc:
-        raise SkillError(
-            f"Unknown agent '{agent}'; choose one of: {', '.join(SHOW_FOR)}."
-        ) from exc
+        raise SkillError(f"Unknown agent '{agent}'; choose one of: {', '.join(SHOW_FOR)}.") from exc
 
 
 def target_dir(agent: str) -> Path:
     """Return the skill directory for ``agent`` in the user's home."""
     if agent not in AGENT_SKILL_DIRS:
-        raise SkillError(
-            f"Unknown agent '{agent}'; choose one of: {', '.join(AGENT_SKILL_DIRS)}."
-        )
+        raise SkillError(f"Unknown agent '{agent}'; choose one of: {', '.join(AGENT_SKILL_DIRS)}.")
     return Path.home() / AGENT_SKILL_DIRS[agent]
 
 
@@ -83,10 +81,14 @@ def install(directory: Path | str, force: bool = False, kind: str = "default") -
     """
     path = Path(directory) / "SKILL.md"
     text = skill_text(kind)
+    # Never write through a symbolic link: it could point anywhere, and a
+    # dangling one would create its target (security review, low).
+    if path.is_symlink():
+        raise SkillError(f"{path} is a symbolic link; remove it or install with --dir elsewhere.")
     if path.exists() and path.read_text() != text and not force:
         raise SkillError(
             f"{path} exists and differs from codebud's skill; use --force to replace it."
         )
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(text)
+    atomic_write_text(str(path), text)  # all or nothing
     return path

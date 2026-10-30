@@ -184,3 +184,39 @@ def test_cli_skill_install_refuses_changed_copy(tmp_path, monkeypatch, capsys):
     assert _cli(["skill", "install", "--dir", str(tmp_path / "x")], monkeypatch) == 1
     assert "--force" in capsys.readouterr().err
     assert (tmp_path / "x" / "SKILL.md").read_text() == "mine\n"
+
+
+# --- never through a symlink, never half-written (security review, low) ------
+
+
+def test_install_refuses_a_symlinked_skill_file(tmp_path):
+    target = tmp_path / "elsewhere.txt"
+    target.write_text("keep me")
+    (tmp_path / "skills").mkdir()
+    (tmp_path / "skills" / "SKILL.md").symlink_to(target)
+    with pytest.raises(skill.SkillError, match="symbolic link"):
+        skill.install(tmp_path / "skills", force=True)
+    assert target.read_text() == "keep me"
+
+
+def test_install_refuses_a_dangling_symlink(tmp_path):
+    (tmp_path / "skills").mkdir()
+    missing = tmp_path / "would-be-created.txt"
+    (tmp_path / "skills" / "SKILL.md").symlink_to(missing)
+    with pytest.raises(skill.SkillError, match="symbolic link"):
+        skill.install(tmp_path / "skills")
+    assert not missing.exists()
+
+
+def test_an_interrupted_install_leaves_the_old_copy(tmp_path, monkeypatch):
+    from codebud import fsutil
+
+    (tmp_path / "SKILL.md").write_text("old copy")
+
+    def die(*args):
+        raise KeyboardInterrupt
+
+    monkeypatch.setattr(fsutil.os, "replace", die)
+    with pytest.raises(KeyboardInterrupt):
+        skill.install(tmp_path, force=True)
+    assert (tmp_path / "SKILL.md").read_text() == "old copy"
