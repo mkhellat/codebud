@@ -14,8 +14,12 @@ engagement; ``close`` ends the log. Editing, removing or reordering an
 entry breaks the chain, and verify() reports the first line where it
 breaks.
 
-A chain cannot show that entries were cut off the *end*: record the head
-hash verify() reports (or close the log) somewhere outside the log.
+What the chain proves is relative to a head hash kept somewhere else.
+Anyone who can write the file can rewrite it consistently -- edit an
+entry and recompute every hash after it, or cut entries off the end --
+and verify() will still pass. So record the head hash verify() reports
+outside the log (in the case notes, a ticket, a signed message); the log
+then shows any change made before that point.
 
 Encrypted at rest (D14b: all security data). A log created with
 encryption on (codebud.crypto) stores each entry as
@@ -301,7 +305,20 @@ class EvidenceLog:
 
     def _append(self, kind: str, data: dict, artefacts) -> dict:
         records = [_artefact(a) for a in artefacts]
-        with open(self.path, "a+") as f:
+        # Never recreate the log (a moved or deleted one would restart as a
+        # new, unverified chain with default permissions) and never follow a
+        # symlink put in its place (security review, low).
+        flags = os.O_RDWR | os.O_APPEND | getattr(os, "O_NOFOLLOW", 0)
+        try:
+            fd = os.open(self.path, flags)
+        except FileNotFoundError as exc:
+            raise EvidenceError(
+                f"evidence log {self.path} is gone; not recreating it "
+                "(the chain would restart unverified)"
+            ) from exc
+        except OSError as exc:  # ELOOP: a symbolic link in its place
+            raise EvidenceError(f"cannot open evidence log {self.path}: {exc}") from exc
+        with os.fdopen(fd, "a+") as f:
             fcntl.flock(f, fcntl.LOCK_EX)  # released when f is closed
             f.seek(0)
             lines = f.read().splitlines()

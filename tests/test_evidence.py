@@ -315,3 +315,46 @@ def test_every_entry_has_a_random_nonce(log):
     a = log.append("note", {"text": "same"})
     b = log.append("note", {"text": "same"})
     assert len(a["nonce"]) == 32 and a["nonce"] != b["nonce"]
+
+
+# --- appends never recreate the log (security review, low) -----------------
+
+
+def test_a_deleted_log_is_not_recreated(log):
+    log.path.unlink()
+    with pytest.raises(EvidenceError, match="gone"):
+        log.append("note", {"text": "after delete"})
+    assert not log.path.exists()
+
+
+def test_a_symlink_in_place_of_the_log_is_refused(log, tmp_path):
+    other = tmp_path / "other.log"
+    other.write_text("")
+    log.path.unlink()
+    log.path.symlink_to(other)
+    with pytest.raises(EvidenceError, match="cannot open"):
+        log.append("note", {"text": "x"})
+    assert other.read_text() == ""
+
+
+def test_appends_keep_the_log_private(log):
+    log.append("note", {"text": "x"})
+    assert stat.S_IMODE(os.stat(log.path).st_mode) == 0o600
+
+
+def test_a_consistent_rewrite_needs_the_recorded_head_to_be_caught(log):
+    # Documented limit: the chain is checked against a head hash kept
+    # elsewhere. Rewriting an entry and every hash after it passes verify(),
+    # but the head no longer matches the one recorded before.
+    from codebud_sec.evidence import entry_hash
+
+    log.append("step", {"command": "id"})
+    recorded_head = verify(log.path).head
+    lines = _lines(log.path)
+    entry = json.loads(lines[1])
+    entry["data"]["command"] = "whoami"
+    entry["hash"] = entry_hash(entry)
+    _rewrite(log.path, [lines[0], json.dumps(entry, sort_keys=True)])
+    result = verify(log.path)
+    assert result.ok  # the chain alone cannot tell
+    assert result.head != recorded_head  # the recorded head can
