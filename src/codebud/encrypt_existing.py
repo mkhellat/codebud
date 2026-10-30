@@ -23,15 +23,17 @@ old entries.json.migrated, quarantined *.corrupt-* files -- is not
 converted, only reported.
 """
 
+import fcntl
 import os
 import shutil
 import sqlite3
+import tempfile
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
 
 from codebud import crypto, memory, paths, sessions
-from codebud.fsutil import atomic_write_bytes, private_dir
+from codebud.fsutil import atomic_write_bytes, create_private, private_dir
 from codebud.rag import store
 
 
@@ -134,18 +136,43 @@ def apply(todo: Plan, backup: Path) -> list[Path]:
     return copies
 
 
-def _encrypt_index(db: Path, backup: Path) -> list[Path]:
-    """Encrypt one plaintext index; return the backup copies of its files."""
-    # Fold the write-ahead log into the database file, so that file alone
-    # is the whole index (this does not change what the index contains).
-    con = sqlite3.connect(db)
-    try:
-        con.execute("PRAGMA wal_checkpoint(TRUNCATE)")
-    finally:
-        con.close()
-    live = [p for p in (db, Path(f"{db}-wal"), Path(f"{db}-shm")) if p.exists()]
-    copies = [_back_up(p, backup) for p in live]
-    crypto.write_file(db.parent / store.SEALED_NAME, db.read_bytes())
-    for path in live:  # each one's copy is in the backup
-        path.unlink()
+def _encrypt_index(db: Path, backup: Path, timeout: float = 30.0) -> list[Path]:
+    """Encrypt one plaintext index; return the backup copies of its files.
+
+    Holds the index's lock (the one encrypted-index writers take) and a
+    SQLite write transaction on a guard connection throughout, so a
+    `codebud index` running meanwhile is waited for and none of its writes
+    is lost (security review, low). The encrypted copy is a consistent
+    snapshot made with SQLite's backup API from a second, read-only
+    connection -- write-ahead log included. (The backup cannot come from
+    the guard connection: SQLite reports "locked" when the source
+    connection is itself writing, and Python's backup() retries forever.)
+    """
+    private_dir(db.parent)
+    lock_path = db.parent / store.LOCK_NAME
+    create_private(lock_path)
+    with open(lock_path, "a") as lock:
+        fcntl.flock(lock, fcntl.LOCK_EX)
+        guard = sqlite3.connect(db, timeout=timeout)
+        try:
+            guard.execute("BEGIN IMMEDIATE")  # waits for writers, then keeps them out
+            live = [p for p in (db, Path(f"{db}-wal"), Path(f"{db}-shm")) if p.exists()]
+            copies = [_back_up(p, backup) for p in live]
+            fd, snapshot = tempfile.mkstemp(dir=db.parent, prefix=".snapshot-", suffix=".tmp")
+            os.close(fd)
+            try:
+                reader = sqlite3.connect(db, timeout=timeout)
+                dest = sqlite3.connect(snapshot)
+                try:
+                    reader.backup(dest)
+                finally:
+                    dest.close()
+                    reader.close()
+                crypto.write_file(db.parent / store.SEALED_NAME, Path(snapshot).read_bytes())
+            finally:
+                os.unlink(snapshot)
+            for path in live:  # each one's copy is in the backup
+                path.unlink()
+        finally:
+            guard.close()
     return copies

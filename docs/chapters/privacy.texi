@@ -199,6 +199,9 @@ it once you have checked that @command{codebud sessions} and
 @command{codebud history} read everything back (@command{rm -r} on the
 directory it names).  Until then your plaintext is still on disk.
 Sessions open in a chat are skipped --- run it again after closing them.
+A project index is converted only once no @command{codebud index} is
+writing it: Codebud waits up to 30 seconds for one to finish, and keeps
+others from starting until the conversion is done.
 Older plaintext Codebud kept aside (@file{entries.json.migrated},
 quarantined @file{*.corrupt-*} files) is listed but not converted.  No
 passphrase is needed: encrypting uses only the public key.

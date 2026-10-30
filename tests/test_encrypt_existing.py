@@ -156,3 +156,71 @@ def test_older_plaintext_is_reported_not_converted(plaintext, capsys):
 def test_notes_when_encryption_is_off(plaintext, capsys):
     assert _codebud("key", "encrypt-existing", "--yes") == 0
     assert "encryption is off" in capsys.readouterr().out
+
+
+# --- converting an index while something writes it (security review, low) --
+
+
+@pytest.fixture
+def wal_index(tmp_path):
+    """A plaintext WAL-mode index database in an index directory."""
+    import sqlite3
+
+    from codebud.rag import store
+
+    directory = paths.data_dir() / "index" / "abcd"
+    directory.mkdir(parents=True)
+    db = directory / store.DB_NAME
+    con = sqlite3.connect(db)
+    con.execute("PRAGMA journal_mode=WAL")
+    con.execute("CREATE TABLE t (x)")
+    con.commit()
+    con.close()
+    crypto.create_key(PASSPHRASE)
+    crypto.lock()
+    return db
+
+
+def test_rows_still_in_the_wal_are_in_the_encrypted_copy(wal_index, tmp_path):
+    import sqlite3
+
+    from codebud.encrypt_existing import _encrypt_index
+    from codebud.rag import store
+
+    writer = sqlite3.connect(wal_index)
+    writer.execute("PRAGMA wal_autocheckpoint=0")  # keep the rows in the WAL
+    writer.executemany("INSERT INTO t VALUES (?)", [(i,) for i in range(50)])
+    writer.commit()
+    try:
+        _encrypt_index(wal_index, tmp_path / "backup")
+    finally:
+        writer.close()
+    crypto.unlock(PASSPHRASE)
+    plain = tmp_path / "check.sqlite3"
+    plain.write_bytes(crypto.decrypt((wal_index.parent / store.SEALED_NAME).read_bytes()))
+    con = sqlite3.connect(plain)
+    try:
+        assert con.execute("SELECT COUNT(*) FROM t").fetchone()[0] == 50
+    finally:
+        con.close()
+
+
+def test_a_writer_in_progress_is_waited_for_not_overrun(wal_index, tmp_path):
+    import sqlite3
+
+    from codebud.encrypt_existing import _encrypt_index
+    from codebud.rag import store
+
+    writer = sqlite3.connect(wal_index)
+    writer.execute("BEGIN IMMEDIATE")  # a `codebud index` mid-write
+    writer.execute("INSERT INTO t VALUES (1)")
+    try:
+        with pytest.raises(sqlite3.OperationalError, match="locked"):
+            _encrypt_index(wal_index, tmp_path / "backup", timeout=0.2)
+    finally:
+        writer.rollback()
+        writer.close()
+    # Nothing was converted, copied or removed.
+    assert wal_index.exists()
+    assert not (wal_index.parent / store.SEALED_NAME).exists()
+    assert not (tmp_path / "backup").exists()
