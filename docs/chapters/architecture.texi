@@ -90,7 +90,10 @@ catalogue (from @code{ToolRegistry.describe_tools()}) and safety rules
 (from @code{SafetyEngine.describe_rules()}) into a structured few-shot
 prompt, followed by the conversation history and then the retrieved
 project context, right before the request (so everything above it stays
-the same between turns and Ollama's prompt cache covers it).
+the same between turns and Ollama's prompt cache covers it).  The context
+is fenced by a random tag per request, so text in a file cannot fake the
+end of it, and the history holds what each step did (@code{tool(target)},
+from its arguments), not the model's description of it.
 
 @item
 @strong{LLMPlanner} calls @code{call_llm(prompt, on_chunk=...)} via the

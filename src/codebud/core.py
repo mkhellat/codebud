@@ -42,6 +42,31 @@ from .safety import SafetyEngine
 from .sandbox import Sandbox
 from .tools.tool_registry import ToolRegistry
 
+_SUMMARY_LIMIT = 80
+
+
+def step_summary(step: dict[str, Any]) -> str:
+    """``tool(target)`` for a plan step, from its arguments: the path of a
+    file tool, a patch's target file, a command line, a search query."""
+    from .tools.patcher import patch_target
+
+    args = step.get("args") if isinstance(step.get("args"), dict) else {}
+    tool = str(step.get("tool", "?"))
+    if tool in ("file_read", "file_write"):
+        target = args.get("path", "")
+    elif tool == "patch":
+        target = patch_target(str(args.get("patch") or "")) or ""
+    elif tool == "command":
+        target = args.get("cmd", "")
+    elif tool == "web_search":
+        target = args.get("query", "")
+    else:
+        target = ""
+    target = " ".join(str(target).split())  # one line
+    if len(target) > _SUMMARY_LIMIT:
+        target = target[: _SUMMARY_LIMIT - 3] + "..."
+    return f"{tool}({target})"
+
 
 class AgentCore:
     """
@@ -140,10 +165,12 @@ class AgentCore:
             self._history.append({"role": "assistant", "content": "plan_error: malformed plan"})
             return {"status": "plan_error", "error": "Planner returned malformed plan"}
 
-        # Record a compact assistant turn so the model sees what it planned
-        step_summaries = ", ".join(
-            f"{s['tool']}({s.get('description', '')})" for s in plan_output.get("plan", [])
-        )
+        # Record a compact assistant turn so the model sees what it planned.
+        # It is built from what each step does (its tool and target), not
+        # from the model's free-text description: text injected into a
+        # description must not carry into later prompts or /compact
+        # summaries (security review M1).
+        step_summaries = ", ".join(step_summary(s) for s in plan_output.get("plan", []))
         self._history.append({"role": "assistant", "content": f"planned: {step_summaries}"})
 
         return plan_output

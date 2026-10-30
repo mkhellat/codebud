@@ -104,6 +104,8 @@ tests/
 │                                secret is held (checked in a subprocess)
 ├── test_project_policy.py      project .codebud/ policy: narrow always,
 │                                widen once trusted (hash-bound), asking
+├── test_prompt_injection.py    project context fenced by a random tag,
+│                                imitations labelled, history from step args
 ├── test_purge.py                sessions --delete/--purge, history
 │                                --purge, confirmation, retention limit
 ├── test_rag_chunker.py          chunking by Python definition, Texinfo

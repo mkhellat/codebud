@@ -507,7 +507,7 @@ entry:
 [3] You: /history
   [1] SUMMARY: The user asked the coding agent to list all Python files ...
   [2] USER: show the last 3 git commits
-  [3] ASSISTANT: planned: command(list last 3 git commits)
+  [3] ASSISTANT: planned: command(git log -n 3)
 @end example
 
 Use it when a long session has made the prompt large: a smaller prompt is
@@ -710,7 +710,11 @@ documentation relevant to a request.
 Once a project has an index, every request from @command{run},
 @command{plan} and @command{chat} first searches it, and the five most
 relevant chunks go into the planning prompt as @dfn{project context},
-marked as reference data rather than instructions.  This is what lets the
+marked as reference data rather than instructions.  The block is fenced
+by a random tag chosen for each request, so text in a file cannot fake
+its end and pose as your request, and lines that imitate the prompt's
+own structure (@samp{USER REQUEST:} and the like) are labelled
+@samp{(file text)}.  This is what lets the
 planner name real files: asked to change a function, it reads and patches
 the file that defines it instead of guessing a path.  The context takes at
 most a quarter of the context window, and is the first thing dropped when

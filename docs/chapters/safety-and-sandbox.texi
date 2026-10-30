@@ -260,6 +260,21 @@ aware of the following limitations:
 
 @itemize
 @item
+@strong{Prompt injection is made harder, not impossible.}  A file in your
+project can contain text aimed at the model, and through the project
+index it reaches the planning prompt.  (Step output and web search
+results are shown to you and stored, but never sent back to the model.)
+Codebud fences project context with a random tag
+per request (a file cannot fake its end or pose as your request), labels
+lines that imitate the prompt's structure as @samp{(file text)}, and
+keeps the model's own step descriptions out of the history, recording
+what each step does instead.  A model can still be persuaded by text it
+reads.  What protects you then is the rest of this chapter: the plan
+shows the real file, command and query of every step before it runs,
+the allow-list and the catastrophic-command refusal apply, file tools
+are confined to the project, and command steps are isolated.
+
+@item
 @strong{File tools are confined, not isolated.}  Isolation applies to
 @code{command} steps, which run as separate processes.
 @code{file_read}, @code{file_write} and @code{patch} run inside Codebud

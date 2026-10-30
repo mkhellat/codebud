@@ -44,8 +44,8 @@ def test_block_names_each_chunk_and_frames_it_as_data():
 
 def test_block_keeps_whole_chunks_within_the_budget():
     hits = [_hit(f"f{i}.py", "x = 1\n" * 40, f"s{i}") for i in range(5)]
-    block = context.format_context(hits, 200)
-    assert estimate_tokens(block) <= 200
+    block = context.format_context(hits, 300)  # room for the header, fence and one chunk
+    assert estimate_tokens(block) <= 300
     assert "f0.py" in block and "f4.py" not in block
     assert block.count("x = 1") % 40 == 0  # no chunk cut in half
 
