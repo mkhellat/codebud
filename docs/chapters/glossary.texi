@@ -234,9 +234,9 @@ chunks from test files half.
 
 @item Sandbox
 The @code{Sandbox} class in @file{src/codebud/sandbox.py}.  It wraps
-@code{subprocess.run()}, enforces a 10-second timeout, blocks a small
-set of hard-coded dangerous patterns, and prevents shell expansion by
-using @code{shlex.split()}.
+@code{subprocess.run()}, enforces a 10-second timeout, refuses
+catastrophic commands again (@code{safety.catastrophic_reason()}), and
+prevents shell expansion by using @code{shlex.split()}.
 
 @item SafetyEngine
 The @code{SafetyEngine} class in @file{src/codebud/safety.py}.  It loads the

@@ -736,8 +736,9 @@ Common additions for a developer workflow:
 @end example
 
 @strong{Warning:} do not add @code{"rm"}, @code{"sudo"}, or
-@code{"shutdown"} to either list.  The sandbox has a separate hard-coded
-block for the most destructive patterns (@pxref{The Sandbox}).
+@code{"shutdown"} to either list.  The most destructive forms
+(@code{rm -rf /}, powering off, erasing a disk) are refused even if you
+do (@pxref{The Sandbox}), but everything short of them would run.
 
 
 @node Trusted Sequences

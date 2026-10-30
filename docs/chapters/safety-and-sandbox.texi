@@ -37,7 +37,7 @@ SafetyEngine.may_execute()            @r{(re-check right before each step)}
 Executor → tool.run(args)
     │
     ▼  (for command steps only)
-Sandbox._is_dangerous()               @r{(layer 2: hard-coded block list)}
+catastrophic_reason()                 @r{(layer 2: parsed backstop, again)}
     │  block → returncode=1
     ▼
 subprocess.run(shlex.split(cmd), timeout=10)
@@ -118,32 +118,41 @@ Source: @file{src/codebud/safety.py}
 
 @node The Sandbox
 @section The Sandbox
-@cindex Sandbox._is_dangerous
+@cindex catastrophic commands
 @cindex hard-blocked commands
 
-The @code{Sandbox} is the last line of defence.  Even if the policy files
-were edited to allow a dangerous command, the sandbox checks a small
-hard-coded block list first:
+The allow-list is the main gate, but you can widen it (your own policy, a
+trusted project, a profile).  So a small set of catastrophic, irreversible
+commands is refused whatever the allow-list says --- by the safety policy
+when the plan is checked, and by the @code{Sandbox} again right before
+running:
 
-@table @code
-@item rm -rf /
-Deletes the root filesystem.
-
-@item rm -rf *
-Deletes everything in the current directory.
-
-@item shutdown
-Shuts down the machine.
-
-@item reboot
-Reboots the machine.
-
-@item :()@{:|:&@};:
-The classic fork bomb.
+@table @asis
+@item Powering off
+@command{shutdown}, @command{reboot}, @command{poweroff}, @command{halt},
+and @command{systemctl} @code{poweroff}/@code{reboot}/@code{halt}/@code{kexec}.
+@item Erasing a disk
+@command{mkfs} (any variant), @command{wipefs}, and @command{dd} writing
+to a device (@code{of=/dev/@dots{}}).
+@item Deleting a vital directory
+@command{rm} with any recursive option (@option{-r}, @option{-R},
+@option{-rf}, @option{-fr}, @option{--recursive}) on @file{/}, a top-level
+system directory (@file{/usr}, @file{/etc}, @file{/home}, @dots{}), or a
+user's home directory (yours, @file{/home/@var{name}}, @file{/root},
+@file{/Users/@var{name}}); and @option{--no-preserve-root} anywhere.
 @end table
 
-Commands matching any of these patterns return @code{returncode=1} and
-a @code{stderr} message without touching the filesystem.
+@noindent
+The command is judged on its parsed words, so spacing and option order do
+not matter (@code{rm -fr /}, @code{rm  -rf /}), and wrapper commands are
+looked through (@command{sudo}, @command{env @var{X}=@var{y}},
+@command{timeout 5}, @command{nice}, @dots{}).  Steps run without a shell,
+so nothing is expanded: @code{rm -rf ~} or @code{rm -rf *} names a file
+literally called @file{~} or @file{*}, and there is no shell to run a fork
+bomb in.  A refused step returns @code{returncode=1} and a @code{stderr}
+message without touching anything.  This is a backstop for the worst
+cases, not a sandbox: what isolation and the allow-list do not prevent,
+it does not either (@pxref{What Is Not Protected}).
 
 @strong{Timeout.}  Every command runs under a 10-second wall-clock timeout
 enforced by @code{subprocess.run(timeout=10)}.  A timed-out command
@@ -180,7 +189,7 @@ output to execution.
 @item @code{git push} @tab @kbd{rejected} @tab only @code{git log}, @code{git status}, @code{git diff}, @code{git show} are listed
 @item @code{cp foo bar} @tab @kbd{executes} @tab @code{cp} is a powerful entry
 @item @code{rm file.txt} @tab @kbd{rejected} @tab @code{rm} is in neither list
-@item @code{rm -rf /} @tab @kbd{blocked} @tab hard-coded in Sandbox regardless of policy
+@item @code{rm -rf /} @tab @kbd{blocked} @tab catastrophic: refused regardless of policy
 @item @code{sudo pacman -Syu} @tab @kbd{rejected} @tab @code{sudo} is in neither list
 @end multitable
 

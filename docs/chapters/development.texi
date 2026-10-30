@@ -48,6 +48,8 @@ tests/
 │                                llm_unavailable, doctor
 ├── test_build.py                Makefile.am lists every module, data file
 │                                and chapter
+├── test_catastrophic.py         power-off, disk-erase, vital rm -r refused
+│                                whatever the allow-list (parsed, unwrapped)
 ├── test_chat_input.py           / menu, toolbar, Shift-Tab (prompt_toolkit)
 ├── test_cli.py                  subcommands, doctor, display, chat REPL,
 │                                history, sessions, modes, run --yes
@@ -381,23 +383,16 @@ invocation without restarting anything.
 Remove the entry from the JSON file.  The @code{SafetyEngine} will reject
 any plan step whose command's words begin with that entry.
 
-@subsection Add a hard block in the Sandbox
+@subsection Add a catastrophic-command refusal
 
-Hard blocks cannot be added via config files; they must be edited directly
-in @file{src/codebud/sandbox.py}:
-
-@example
-dangerous_patterns = [
-    "rm -rf /",
-    "rm -rf *",
-    "shutdown",
-    "reboot",
-    ":()@{:|:&@};:",
-    "dd if=/dev/zero",     @r{← new entry}
-]
-@end example
-
-This pattern is checked as a substring anywhere in the command string.
+Refusals that hold whatever the policy says cannot be added via config
+files; they live in @code{catastrophic_reason()} in
+@file{src/codebud/safety.py}, which judges the parsed command (wrappers
+such as @command{sudo} already removed by @code{_unwrap()}).  Add a
+program name to @code{_POWER}, a directory to @code{_VITAL}, or a new
+check on @code{name} and @code{args}, and a case to
+@file{tests/test_catastrophic.py}; the planner and the sandbox both use
+the function.
 
 
 @node Project Conventions

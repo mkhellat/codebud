@@ -363,11 +363,12 @@ subprocess is launched.  It provides a lightweight second safety layer
 independent of the JSON policy files.
 
 @table @strong
-@item Hard-blocked patterns
-The sandbox always blocks: @code{rm -rf /}, @code{rm -rf *},
-@code{shutdown}, @code{reboot}, and the classic fork bomb
-(@code{:()@{:|:&@};:}).  These are checked before the command is passed to
-@code{subprocess.run()}.
+@item Catastrophic commands
+Powering off, erasing a disk, and recursively deleting a vital directory
+(@file{/}, a system directory, a home directory) are refused whatever the
+policy allows, judged on the parsed command
+(@code{safety.catastrophic_reason()}, @pxref{The Sandbox}).  The sandbox
+checks again before the command is passed to @code{subprocess.run()}.
 
 @item Timeout
 Every command has a 10-second wall-clock timeout enforced by

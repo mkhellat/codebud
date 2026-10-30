@@ -108,7 +108,7 @@ class Sandbox:
     Responsibilities:
     - Execute commands with subprocess
     - Enforce timeouts
-    - Block obviously dangerous commands
+    - Refuse catastrophic commands again before running (safety.catastrophic_reason)
     - Return structured results
     """
 
@@ -133,8 +133,13 @@ class Sandbox:
         """
 
         # Basic safety guard
-        if self._is_dangerous(cmd):
-            return {"stdout": "", "stderr": f"Blocked dangerous command: {cmd}", "returncode": 1}
+        # The same backstop the safety policy applies at planning time,
+        # checked again right before running (safety.catastrophic_reason).
+        from codebud.safety import catastrophic_reason
+
+        catastrophic = catastrophic_reason(cmd)
+        if catastrophic:
+            return {"stdout": "", "stderr": f"Refused: {catastrophic}", "returncode": 1}
 
         words = shlex.split(cmd)
         if words and words[0] == "git":
@@ -168,27 +173,3 @@ class Sandbox:
 
         except Exception as e:
             return {"stdout": "", "stderr": f"Sandbox error: {e}", "returncode": 1}
-
-    # ------------------------------------------------------------------
-    # Internal helpers
-    # ------------------------------------------------------------------
-
-    def _is_dangerous(self, cmd: str) -> bool:
-        """
-        Block obviously dangerous commands.
-        This is NOT a full security system — just a basic guard.
-        """
-
-        dangerous_patterns = [
-            "rm -rf /",
-            "rm -rf *",
-            "shutdown",
-            "reboot",
-            ":(){:|:&};:",  # fork bomb
-        ]
-
-        for pattern in dangerous_patterns:
-            if pattern in cmd:
-                return True
-
-        return False

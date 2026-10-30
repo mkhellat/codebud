@@ -25,6 +25,7 @@ It does NOT:
 
 import json
 import logging
+import os
 import re
 import shlex
 from typing import Any
@@ -294,6 +295,89 @@ def _file_refusal(tool: str, args: dict[str, Any]) -> str | None:
     return None
 
 
+# --- catastrophic commands, refused whatever the allow-list says ----------
+#
+# The allow-list is the main gate, but the user can widen it (their own
+# policy, a trusted project, a profile), so these are refused regardless:
+# commands that power the machine off, wipe a disk, or recursively delete a
+# vital directory. Steps run without a shell, so the words are the parsed
+# argv: no glob, ~ or $VAR is ever expanded (security review M5; this
+# replaces a raw-substring check that "rm -fr /" walked past).
+
+# Words that run the rest of the line as a command; looked through.
+_WRAPPERS = {"sudo", "doas", "env", "nice", "nohup", "ionice", "timeout", "time", "command", "exec"}
+_POWER = {"shutdown", "reboot", "poweroff", "halt"}
+_SYSTEMCTL_POWER = {"poweroff", "reboot", "halt", "kexec", "soft-reboot"}
+# Directories whose recursive deletion is catastrophic.
+_VITAL = {
+    "/", "/bin", "/boot", "/dev", "/etc", "/home", "/lib", "/lib32", "/lib64",
+    "/opt", "/proc", "/root", "/run", "/sbin", "/srv", "/sys", "/usr", "/var",
+    "/Users", "/System", "/Library", "/Applications",
+}  # fmt: skip
+
+
+def _unwrap(words: list[str]) -> list[str]:
+    """``words`` with leading wrapper commands (sudo, env X=y, timeout 5, ...)
+    and their options removed, so the real command is judged."""
+    i = 0
+    while i < len(words):
+        word = words[i]
+        name = word.rsplit("/", 1)[-1]
+        if name in _WRAPPERS:
+            i += 1
+            # the wrapper's own options and arguments: -x, --x, X=y, numbers
+            while i < len(words) and (
+                words[i].startswith("-") or "=" in words[i] or words[i].replace(".", "").isdigit()
+            ):
+                i += 1
+            continue
+        break
+    return words[i:]
+
+
+def _vital(path: str) -> bool:
+    """Whether deleting ``path`` recursively would be catastrophic."""
+    if not path.startswith("/"):
+        return False  # relative: inside the working directory (no ~ expansion)
+    # normpath keeps a leading "//" (POSIX leaves it implementation-defined);
+    # on the systems codebud runs on it is "/", so collapse it first.
+    normal = os.path.normpath("/" + path.lstrip("/"))
+    home = os.path.normpath(os.path.expanduser("~"))
+    # any user's home directory, not just this one's
+    homes = os.path.dirname(normal) in ("/home", "/Users")
+    return normal in _VITAL or normal == home or homes
+
+
+def catastrophic_reason(cmd: str) -> str | None:
+    """Why ``cmd`` is refused outright, whatever the policy allows, or None."""
+    words = _unwrap(_split(cmd))
+    if not words:
+        return None
+    name = words[0].rsplit("/", 1)[-1]
+    args = words[1:]
+    if "--no-preserve-root" in args:
+        return "--no-preserve-root is never allowed"
+    if name in _POWER:
+        return f"{name} would power the machine off or restart it"
+    if name == "systemctl" and _SYSTEMCTL_POWER & set(args):
+        return "systemctl would power the machine off or restart it"
+    if name.startswith("mkfs") or name == "wipefs":
+        return f"{name} would erase a file system"
+    if name == "dd" and any(a.startswith("of=/dev/") for a in args):
+        return "dd writing to a device would erase it"
+    if name == "rm":
+        recursive = any(
+            a in ("--recursive", "-r", "-R")
+            or (a.startswith("-") and not a.startswith("--") and ("r" in a or "R" in a))
+            for a in args
+        )
+        targets = [a for a in args if not a.startswith("-")]
+        vital = next((t for t in targets if _vital(t)), None)
+        if recursive and vital:
+            return f"rm would recursively delete {vital}"
+    return None
+
+
 POWERFUL_REASON = "Powerful command (runs code or changes files)."
 
 
@@ -435,6 +519,9 @@ class SafetyEngine:
         words = _split(cmd)
         if not words:
             return "the command could not be parsed"
+        catastrophic = catastrophic_reason(cmd)
+        if catastrophic:
+            return f"{catastrophic} (refused whatever the allow-list says)"
         forbidden = _forbidden_argument(words)
         if forbidden:
             return f"{words[0]} {forbidden} is never allowed (it can run or delete anything)"

@@ -195,9 +195,9 @@ confirmed before running in @code{auto} mode and in @command{codebud run}
 unless @option{--yes} is given.
 
 @item
-The @code{Sandbox} hard-blocks @code{rm -rf /}, @code{rm -rf *},
-@code{shutdown}, @code{reboot}, and the fork bomb regardless of the policy
-files.
+Catastrophic commands --- powering off, erasing a disk, recursively
+deleting @file{/}, a system directory or a home directory --- are refused
+regardless of the policy files (@pxref{The Sandbox}).
 
 @item
 Commands time out after 10 seconds.  Long-running commands (compilation,
