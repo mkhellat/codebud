@@ -103,14 +103,28 @@ Modes: `ask` approves the plan and each step; `auto` approves the plan once
 | `codebud models`   | List downloaded models, marking the active one    |
 | `codebud config`   | Show settings, data directory and policy files    |
 | `codebud history`  | Show past executed steps                          |
+| `codebud trust`    | Show what a project's policy adds (trusting it is the user's call) |
+| `codebud key status` | Whether encryption at rest is on, and the key   |
 | `codebud version`  | Show versions                                     |
 
 ## Safety
 
 Only commands on an allow-list run, matched by whole words; arguments that
-turn a program into "run anything" (`find -exec`, `python -c`, ...) are
-refused. Users can adjust the policy in `~/.config/codebud/` or a project's
-`.codebud/`.
+turn a program into "run anything" (`find -exec`, `python -c`,
+`awk 'BEGIN{system(...)}'`, `sed 'e ...'`, ...) are refused, and so are
+catastrophic commands (powering off, erasing a disk, `rm -r` on `/` or a
+home directory) whatever the allow-list says. File steps write only inside
+the project (never `.git/` or `.codebud/`) and never read the user's
+secret files. Command steps run isolated (no network unless declared,
+project-only writes, secrets hidden) with an allow-listed environment.
+
+A project's `.codebud/` policy can narrow the user's allow-list at once,
+but widens it only after the **user** runs `codebud trust` there (or
+answers yes when asked); without a terminal, widening is ignored with a
+notice. Do not try to work around this: tell the user what the project
+policy would add and let them decide. If the project index is encrypted
+and no passphrase is available, codebud plans without project context and
+says so.
 
 ## Environment variables
 

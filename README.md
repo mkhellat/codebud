@@ -136,6 +136,7 @@ Troubleshooting · Glossary.
 
 ```
 src/codebud/    The package: agent, CLI (cli/), tools, default policy
+src/codebud_sec/ Security layer (engagement file, evidence log); not used yet
 docs/           GNU Texinfo manual
 scripts/        Developer scripts (benchmark, search and plan evals)
 tests/          Test suite (pytest)
@@ -158,7 +159,13 @@ num_ctx = 16384
 `codebud config` shows every value and where it came from. A project's
 `.codebud/config.toml` may set the model and similar options, but never
 anything that sends data off the machine (the Ollama URL, OpenAI key, web
-search).
+search), weakens protection (privacy, masking, encryption, `step_env`), or
+costs you (`num_ctx`, `openai_model`).
+
+A project's `.codebud/` command policy can narrow your allow-list at once;
+it only *widens* it once you trust that project. `run`, `plan` and `chat`
+show what it would add and ask; `codebud trust` does the same on demand
+(`--revoke` withdraws it). Any change to those files asks again.
 
 ### Profiles
 
@@ -173,7 +180,8 @@ codebud profiles          # list built-in and your own
 ```
 
 Your own go in `~/.config/codebud/profiles/<name>.toml` (`mode`, `privacy`,
-`policy`, `prompt`, `description`); `/profile <name>` switches in chat.
+`policy`, `prompt`, `description`, and `encrypt = true` to turn on
+encryption at rest); `/profile <name>` switches in chat.
 
 ## Environment variables
 

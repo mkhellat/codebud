@@ -42,7 +42,8 @@ openai = ["openai>=1.0"]
 # Project search (codebud index + retrieval): one BLAS matrix-vector product
 # scores every chunk.
 rag = ["numpy>=1.24"]
-# Encryption at rest (age): sessions, history, the security layer's data.
+# Encryption at rest (age): sessions, history, project indexes, the
+# security layer's evidence log.
 crypto = ["pyrage>=1.2"]
 
 # PEP 735: tools for working on codebud itself, not installable by users:

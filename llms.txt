@@ -58,6 +58,11 @@ codebud --no-progress run --yes "…"   # only after the user agrees to unattend
   full-auto/trusted cases).
 - **Encryption at rest (optional):** `codebud key init` then `encrypt = true`
   in config; sessions, history, and project indexes.
+- **Confinement:** file steps write only inside the project (not `.git/`,
+  `.codebud/`) and never read secret files; catastrophic commands are
+  refused whatever the allow-list says.
+- **Project policy:** a repo's `.codebud/` can narrow the allow-list, but
+  widens it only after the user runs `codebud trust` (hash-bound).
 
 Run `codebud doctor` and read the Outbound / Encryption lines before claiming
 a deployment is air-gapped.
