@@ -296,6 +296,17 @@ abstract Unix sockets, such as an X11 display.  Steps that do not
 declare the network have neither.
 
 @item
+@strong{Running Codebud on its own checkout.}  You may use Codebud on its
+own source --- an editable install with its @file{.venv} inside the
+repository, say.  There, an approved edit or step can change the code the
+next Codebud run executes, its safety checks included (@file{safety.py},
+@file{policy.py}, @file{isolation.py}, or a package installed into the
+environment).  Codebud allows it and says so at startup when its own code
+or Python environment is inside the project; review such changes with
+that in mind.  For untrusted repositories, use a separate installation
+(@command{pipx install}, or one outside the project).
+
+@item
 @strong{Network only where isolation works.}  With bubblewrap, command
 steps have no network unless they declare it; at privacy level
 @code{trusted}, or where isolation is unavailable at @code{private}, they

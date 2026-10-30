@@ -122,6 +122,35 @@ def announce_backend() -> None:
         print_warning(f"LLM backend: {backend_description()}: prompts are sent to {host}.")
 
 
+def warn_if_own_code_in_project() -> None:
+    """Say once when codebud's own code is inside the project it works on.
+
+    Running codebud on its own checkout (an editable install, a .venv in
+    the repository) is allowed -- one may use codebud on itself -- but
+    there an edit or a step can change the code the next run executes,
+    safety checks included (security review, low; user decision: warn and
+    document, no read-only protection).
+    """
+    from pathlib import Path
+
+    import codebud
+    from codebud.cli.display import print_warning
+    from codebud.rag.indexer import project_root
+
+    root = Path(project_root()).resolve()
+    own = {
+        "codebud's code": Path(codebud.__file__).resolve().parent,
+        "the Python environment codebud runs in": Path(sys.prefix).resolve(),
+    }
+    inside = [name for name, path in own.items() if path == root or root in path.parents]
+    if inside:
+        print_warning(
+            f"This project contains {' and '.join(inside)}: edits and steps here "
+            "can change what the next codebud run executes, its safety checks "
+            "included. Review changes to them with that in mind."
+        )
+
+
 def unlock_project_index() -> None:
     """Before planning: unlock the key if this project's index is encrypted.
 

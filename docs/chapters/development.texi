@@ -89,6 +89,8 @@ tests/
 ├── test_ollama_proxy.py         local Ollama reachable despite HTTP_PROXY
 ├── test_patcher.py             strict unified diffs: context located,
 │                                mismatch fails unchanged, insertions
+├── test_own_code_warning.py    startup warning when codebud's own code is
+│                                inside the project it works on
 ├── test_paths.py                XDG/.codebud lookup, migration, version,
 │                                python -m codebud
 ├── test_plan_args.py            required tool arguments, retry with
