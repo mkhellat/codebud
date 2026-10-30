@@ -41,7 +41,7 @@ installcheck-local:
 
 # ─── Release tarball ─────────────────────────────────────────────────────────
 
-EXTRA_DIST = bootstrap pyproject.toml README.md llms.txt src/launcher.in tests scripts
+EXTRA_DIST = bootstrap pyproject.toml README.md NEWS llms.txt src/launcher.in tests scripts
 
 # distcheck reconfigures from scratch; keep the Python it was run with.
 AM_DISTCHECK_CONFIGURE_FLAGS = PYTHON="$(PYTHON)"

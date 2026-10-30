@@ -283,7 +283,7 @@ missing, since only encryption at rest needs it, and if @command{bwrap}
 shows what was found:
 
 @example
-  codebud 1.0.0
+  codebud 0.1.0
     prefix:          /usr/local
     Python:          /usr/bin/python3 (3.14)
     package dir:     $@{PYTHON_PREFIX@}/lib/python3.14/site-packages

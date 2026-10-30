@@ -14,6 +14,7 @@ conventions used throughout the codebase.
 * Tuning the Planner Prompt::   Improving JSON reliability.
 * Adding a Safety Rule::        Expanding or restricting what runs.
 * Project Conventions::         Naming, imports, type hints, comments.
+* Versioning::                  When and how the version number changes.
 @end menu
 
 
@@ -436,3 +437,47 @@ per tested step.  No @code{Co-Authored-By} trailer.
 Write at least one test before adding a new feature.  All tests must pass
 without a live Ollama server.
 @end table
+
+
+@node Versioning
+@section Versioning
+@cindex versioning
+@cindex semantic versioning
+
+Codebud follows @uref{https://semver.org, Semantic Versioning}: a version
+is @var{major}.@var{minor}.@var{patch}.  The single source of the number
+is @code{version} in @file{pyproject.toml}; @command{configure}, the
+release tarball, the package metadata and @command{codebud version} all
+read it from there.
+
+@subheading While the version is 0.x
+
+Codebud is not yet at 1.0, so its interface --- the command line, the
+configuration keys and files, the stored data formats --- may still
+change.  Until 1.0:
+
+@itemize
+@item @strong{minor} (0.1.0 @result{} 0.2.0): any new feature, and any
+change that is not backwards compatible (a renamed option, a setting
+that now means something else, a data format that older versions cannot
+read);
+@item @strong{patch} (0.1.0 @result{} 0.1.1): bug fixes, security fixes
+and documentation only, with nothing the user has to change.
+@end itemize
+
+@subheading From 1.0 on
+
+1.0.0 is the promise that the interface is stable.  After it:
+@strong{major} for any incompatible change, @strong{minor} for a new
+feature that keeps compatibility, @strong{patch} for fixes.
+
+@subheading When the number changes
+
+The version is changed when a release is cut, not with every commit:
+each change lands under an ``unreleased'' heading in @file{NEWS}, and
+the release bumps the version by the largest kind of change since the
+last one (one incompatible change makes the next 0.x release a minor
+one, however many fixes come with it).  A change that breaks
+compatibility says so in its commit message (@samp{BREAKING}) and in
+@file{NEWS}, with what the user has to do.
+

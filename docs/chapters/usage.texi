@@ -1043,7 +1043,7 @@ codebud version
 Example output:
 
 @example
-codebud  1.0.0
+codebud  0.1.0
 ollama   0.40.6
 model    qwen2.5-coder:3b-instruct-q4_K_M
 python   3.14.8

@@ -52,3 +52,12 @@ def test_configure_takes_its_version_from_pyproject():
     configure_ac = (ROOT / "configure.ac").read_text()
     assert "pyproject.toml" in configure_ac
     assert re.search(r"AC_INIT\(\[codebud\],\s*m4_esyscmd_s", configure_ac)
+
+
+def test_news_top_entry_matches_the_version():
+    """NEWS's newest entry is the version in pyproject.toml (Versioning in
+    the manual): a release cannot ship with its changes filed elsewhere."""
+    version = re.search(r'(?m)^version = "([^"]+)"', (ROOT / "pyproject.toml").read_text())
+    top = re.search(r"(?m)^\* Noteworthy changes in release (\S+)", (ROOT / "NEWS").read_text())
+    assert version and top
+    assert top.group(1) == version.group(1)

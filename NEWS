@@ -1,0 +1,72 @@
+Codebud NEWS                                                  -*- outline -*-
+
+User-visible changes, newest first. Versions follow Semantic Versioning;
+see "Versioning" in the manual's Development chapter.
+
+* Noteworthy changes in release 0.1.0 (unreleased) [alpha]
+
+The first release.  Codebud is a privacy-first, local coding agent: a
+local Ollama model plans a request as steps, and codebud runs them under
+a safety policy you can read and change.
+
+** Using it
+
+  codebud run, plan (and plan --execute) and chat; agent modes ask, auto,
+  full-auto, plan and edit; sessions saved and resumed (chat --resume);
+  codebud doctor, history, sessions, models, config, profiles, version.
+
+  Project search: codebud index builds a per-project index, and the
+  most relevant code goes into each plan as project context.
+
+  Profiles bundle a mode, a privacy level, a policy and a prompt
+  (built in: default, unattended; your own in ~/.config/codebud/profiles/).
+
+  codebud skill install lets Claude Code or OpenClaw call codebud.
+
+** Privacy
+
+  Prompts go only to the Ollama on this machine by default; no cloud
+  fallback, no telemetry.  A privacy level (locked, private, trusted)
+  decides what may leave the machine; web search is off unless enabled
+  and confirmed.  Stored data is owner-only, secrets in it are masked,
+  and deleting it lists what goes and asks first.
+
+  Optional encryption at rest with age: codebud key init, then
+  encrypt = true; sessions, step history and project indexes.  Older
+  plaintext can be converted with codebud key encrypt-existing.
+
+** Safety
+
+  Commands run only if on an allow-list, matched by whole words; arguments
+  that run arbitrary code are refused, and catastrophic commands (power
+  off, erase a disk, rm -r of / or a home directory) are refused whatever
+  the allow-list says.  Command steps are isolated with bubblewrap: no
+  network unless declared, project-only writes, secrets and codebud's own
+  files hidden, an allow-listed environment.
+
+  File steps write only inside the project, never into .git/ or
+  .codebud/, and never read your secret files; every plan shows the real
+  path, command or query of each step before it runs.
+
+  A project's .codebud/ policy narrows your allow-list at once and widens
+  it only once you trust the project (codebud trust); any change to it
+  asks again.  A project's config.toml cannot redirect your prompts,
+  weaken protection or set what costs you.
+
+  An independent security review (three reviewers) found 3 critical,
+  4 high, 5 medium and 14 low issues before this release; all are fixed
+  or, where agreed, documented.
+
+** Building and installing
+
+  GNU Autotools (./bootstrap, ./configure, make, make check, make
+  install) or pip; a Texinfo manual (info and HTML).  CI builds and
+  tests on Ubuntu, macOS and Fedora.
+
+** Known limitations
+
+  Alpha: the command line, configuration and data formats may still
+  change before 1.0.  Isolation needs bubblewrap and user namespaces
+  (GNU/Linux); elsewhere steps run unisolated with a warning.  The
+  security layer (codebud_sec: engagement file, evidence log) ships but
+  is not used yet.

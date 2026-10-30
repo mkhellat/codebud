@@ -1,6 +1,6 @@
 [project]
 name = "codebud"
-version = "1.0.0"
+version = "0.1.0"
 description = "A privacy-first, local coding agent using Ollama — no API key required."
 readme = "README.md"
 # PEP 639: SPDX license expression and the license file(s) to ship.
@@ -65,6 +65,7 @@ codebud = "codebud.cli.main:main"
 Repository   = "https://github.com/mkhellat/codebud"
 Documentation = "https://github.com/mkhellat/codebud/tree/main/docs"
 "Bug Tracker" = "https://github.com/mkhellat/codebud/issues"
+Changelog    = "https://github.com/mkhellat/codebud/blob/main/NEWS"
 
 [tool.setuptools.packages.find]
 where = ["src"]

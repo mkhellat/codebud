@@ -119,7 +119,10 @@ make lint | format | coverage | dist-python | install-link | clean-dev
 
 ## Documentation
 
-The full manual lives in `docs/` and is written in GNU Texinfo.
+The full manual lives in `docs/` and is written in GNU Texinfo. What
+changed in each release is in [NEWS](NEWS); versions follow
+[Semantic Versioning](https://semver.org) (0.x while the interface may still
+change).
 
 ```bash
 make info    # → docs/codebud.info   (installed by make install; read with: info codebud)
