@@ -219,3 +219,30 @@ def test_default_model_gets_no_task_prefix(monkeypatch):
     embeddings.embed_query("where is f?")
     assert sent[0]["model"] == "all-minilm"
     assert sent[0]["input"] == ["where is f?"]
+
+
+# --- secrets inside ordinary files are masked before indexing (M3) ----------
+
+
+def test_secrets_in_ordinary_files_are_masked_in_the_index(tmp_path):
+    root = tmp_path / "proj"
+    root.mkdir()
+    key = "wJalrXUtnFEMI" + "/K7MDENG/bPxRfiCYEXAMPLEKEY"
+    (root / "aws.cfg").write_text(f"[default]\naws_secret_access_key = {key}\n")
+    indexer.index_project(root)
+    with IndexStore.open(root) as store:
+        texts = [store.chunk(i).text for i, _ in store.vectors()]
+    assert texts and all(key not in t for t in texts)
+    assert any("aws_secret_access_key = [redacted]" in t for t in texts)
+
+
+def test_masking_off_keeps_the_index_verbatim(tmp_path, monkeypatch):
+    monkeypatch.setenv("CODEBUD_MASK_SECRETS", "0")
+    root = tmp_path / "proj"
+    root.mkdir()
+    key = "wJalrXUtnFEMI" + "/K7MDENG/bPxRfiCYEXAMPLEKEY"
+    (root / "aws.cfg").write_text(f"aws_secret_access_key = {key}\n")
+    indexer.index_project(root)
+    with IndexStore.open(root) as store:
+        texts = [store.chunk(i).text for i, _ in store.vectors()]
+    assert any(key in t for t in texts)

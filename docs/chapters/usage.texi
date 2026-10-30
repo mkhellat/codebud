@@ -775,17 +775,31 @@ build output.  Then these are always skipped:
 
 @itemize
 @item Anything that looks like a secret, whatever the ignore files say:
-@file{.env} files, keys and key stores (@file{*.pem}, @file{*.key},
-@file{id_rsa*}, @file{*.p12}, @dots{}), credential files (@file{.netrc},
-@file{.pypirc}, @file{credentials*}, names containing @samp{secret}),
-encrypted files, and anything under @file{.ssh}, @file{.gnupg},
-@file{.aws}, @file{.kube} or @file{.docker}.
+@file{.env} and @file{.envrc} files, keys and key stores (@file{*.pem},
+@file{*.key}, @file{id_rsa*}, @file{*.p12}, @dots{}), credential files
+(@file{.netrc}, @file{.pypirc}, @file{.git-credentials},
+@file{.vault-token}, @file{.htpasswd}, @file{.s3cfg}, @file{.boto},
+@file{.dockercfg}, names containing @samp{credential} or @samp{secret}),
+shell and REPL histories (@file{.bash_history}, @dots{}), Terraform state
+and variables (@file{*.tfstate}, @file{*.tfvars}), encrypted files, and
+anything under @file{.ssh}, @file{.gnupg}, @file{.aws}, @file{.azure},
+@file{.kube}, @file{.docker}, @file{.password-store} or @file{.terraform}.
 @item Patterns listed in a @file{.codebudignore} file at the project
 root: one per line, shell-style (@samp{*.generated.py}), a trailing
 @samp{/} for a directory (@samp{vendor/}), @samp{#} for comments.
 @item Symbolic links, lock files, minified files, source maps, files
 larger than 256@tie{}KB, and anything that is not UTF-8 text.
 @end itemize
+
+@noindent
+A secret inside an ordinary file --- an API key in @file{config.py}, an
+@code{aws_secret_access_key} in @file{aws.cfg} --- is masked as
+@samp{[redacted]} before the text is embedded and stored, the same way
+sessions and history are masked (@pxref{Files and Directories}), so it
+never reaches a prompt.  With masking turned off
+(@env{CODEBUD_MASK_SECRETS=0}) the index keeps the text as it is.  An
+index built before this masking existed keeps its old text until
+@command{codebud index --rebuild}.
 
 Python files are split into their top-level functions and classes (a
 long class into its methods), Texinfo files by node, Markdown by heading,

@@ -120,3 +120,43 @@ def test_binary_large_generated_and_symlinked_files_are_skipped(repo, monkeypatc
     selection = select_files(repo)
     assert selection.files == ["real.py"]
     assert selection.skipped == {"binary": 2, "too large": 1, "generated": 2, "symlink": 1}
+
+
+# --- secret files the security review found indexed (M3, 2026-10-29) --------
+
+
+@pytest.mark.parametrize(
+    "rel",
+    [
+        ".envrc",
+        ".git-credentials",
+        ".vault-token",
+        ".bash_history",
+        ".zsh_history",
+        ".python_history",
+        "psql_history",
+        ".htpasswd",
+        ".s3cfg",
+        ".boto",
+        ".dockercfg",
+        "prod.tfvars",
+        "terraform.tfstate",
+        "terraform.tfstate.backup",
+        "aws_credentials",
+        ".password-store/web/site.gpg",
+        ".azure/accessTokens.json",
+        ".terraform/terraform.tfstate",
+    ],
+)
+def test_more_secret_files_are_never_indexed(tmp_path, rel):
+    _write(tmp_path, "main.py")
+    _write(tmp_path, rel, "token = abcdefghijklmnop\n")
+    selection = select_files(tmp_path)
+    assert rel not in selection.files
+    assert "main.py" in selection.files
+
+
+@pytest.mark.parametrize("rel", ["history.py", "src/env_setup.py", "docs/environment.md"])
+def test_ordinary_files_with_similar_names_are_indexed(tmp_path, rel):
+    _write(tmp_path, rel)
+    assert rel in select_files(tmp_path).files

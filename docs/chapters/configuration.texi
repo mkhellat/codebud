@@ -890,9 +890,9 @@ a value that is a call (@code{token = get_token()}), an attribute
 a secret.  Values shorter than 8 characters are not masked, since too
 many ordinary words would be.  Prompts sent to the model are not changed --- only what is
 written to disk --- so a resumed session shows @samp{[redacted]} where
-the original had a secret.  The project index is not masked: it holds
-your files' text as it is (secret files are never indexed;
-@pxref{The index Subcommand}).  Set @env{CODEBUD_MASK_SECRETS} to
+the original had a secret.  The project index is masked too: secret
+files are never indexed, and secrets inside ordinary files are masked
+before they are stored (@pxref{The index Subcommand}).  Set @env{CODEBUD_MASK_SECRETS} to
 @samp{0} (or @code{mask_secrets = false} in your own
 @file{config.toml}) to store everything verbatim.
 

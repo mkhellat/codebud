@@ -81,7 +81,9 @@ Before a session or a step is saved, API keys and tokens, private keys,
 passwords in URLs and secret-looking assignments are replaced by
 @samp{[redacted]} (@env{CODEBUD_MASK_SECRETS}, on by default).  What is
 sent to the model is not changed.  Secret files (@file{.env},
-@file{*.pem}, @file{id_rsa}, @dots{}) are never put into a project index.
+@file{*.pem}, @file{id_rsa}, shell histories, @dots{}) are never put into
+a project index, and secrets inside the files that are indexed are masked
+first, so project context in a prompt does not carry them either.
 
 @subheading Deleting
 
@@ -445,7 +447,8 @@ steps are not isolated (a warning at @code{private}, refused at
 private keys and secret-looking assignments (@pxref{Files and
 Directories} for the list), not every secret: a secret with no
 recognisable format or name, or shorter than 8 characters, is stored as
-it is.  The project index keeps your files' text as it is.
+it is --- in the project index too, so such a secret in your files can
+reach a prompt as project context.
 
 @item
 @strong{Encryption at rest covers what Codebud stores, not what it is

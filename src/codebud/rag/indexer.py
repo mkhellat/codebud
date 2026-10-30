@@ -21,10 +21,10 @@ import subprocess
 import time
 from collections import Counter
 from collections.abc import Callable
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 
-from codebud import gitsafe
+from codebud import gitsafe, redact
 from codebud.rag.chunker import Chunk, chunk_file
 from codebud.rag.files import candidate_files, select_files
 from codebud.rag.store import IndexStore, index_dir
@@ -58,6 +58,14 @@ def project_root(start: Path | str | None = None) -> Path:
     except OSError:
         return start
     return Path(out.stdout.strip()) if out.returncode == 0 else start
+
+
+def masked(chunk: Chunk) -> Chunk:
+    """``chunk`` with its secrets masked, unless masking is off."""
+    if not redact.enabled():
+        return chunk
+    text = redact.redact(chunk.text)
+    return chunk if text == chunk.text else replace(chunk, text=text)
 
 
 def document_text(chunk: Chunk) -> str:
@@ -102,7 +110,10 @@ def index_project(
             if known.get(rel) == digest:
                 report.unchanged += 1
                 continue
-            chunks = chunk_file(rel, data.decode("utf-8"))
+            # Secrets inside ordinary files (a key in config.py, aws.cfg)
+            # are masked before the text is embedded, stored or put into a
+            # prompt, like everything else codebud keeps (redact.py).
+            chunks = [masked(c) for c in chunk_file(rel, data.decode("utf-8"))]
             vectors = embed_documents([document_text(c) for c in chunks]) if chunks else []
             if vectors:
                 store.ensure_model(model, len(vectors[0]))

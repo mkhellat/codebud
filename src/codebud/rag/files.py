@@ -11,9 +11,9 @@ hidden directories, virtual environments, caches and build output.
 
 Then, in order, a candidate is skipped when it:
 
-- looks like a secret (keys, .env files, credential stores, ~/.ssh-style
-  directories) -- always, whatever the ignore files say, since the index
-  keeps a copy of the text;
+- looks like a secret (keys, .env/.envrc files, credential stores, shell
+  histories, Terraform state, ~/.ssh-style directories) -- always,
+  whatever the ignore files say, since the index keeps a copy of the text;
 - matches a pattern in the project's .codebudignore;
 - is a symbolic link, a lock/minified/source-map file, larger than
   MAX_FILE_BYTES, or not UTF-8 text.
@@ -44,16 +44,39 @@ SECRET_NAMES = (
     "id_dsa*",
     "id_ecdsa*",
     "id_ed25519*",
+    ".envrc",
     ".netrc",
     ".pgpass",
     ".npmrc",
     ".pypirc",
-    "credentials*",
+    ".git-credentials",
+    "*credential*",
     "*secret*",
     "*.gpg",
     "*.kdbx",
+    ".vault-token",
+    ".htpasswd",
+    ".s3cfg",
+    ".boto",
+    ".dockercfg",
+    "*.tfvars",
+    "*.tfstate",
+    "*.tfstate.*",
+    # shell and REPL histories (commands, often with passwords and tokens)
+    ".*history",
+    "*_history",
+    ".histfile",
 )
-SECRET_DIRS = {".ssh", ".gnupg", ".aws", ".kube", ".docker"}
+SECRET_DIRS = {
+    ".ssh",
+    ".gnupg",
+    ".aws",
+    ".azure",
+    ".kube",
+    ".docker",
+    ".password-store",
+    ".terraform",
+}
 
 GENERATED_NAMES = ("*.lock", "package-lock.json", "*.min.js", "*.min.css", "*.map")
 
