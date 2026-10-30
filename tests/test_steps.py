@@ -119,3 +119,55 @@ def test_first_failure_stops_the_run_even_after_a(answers):
 def test_unknown_policy_is_an_error():
     with pytest.raises(ValueError):
         run_steps(_Agent(), [], "yolo")
+
+
+# --- "a(ll)" in ask mode still confirms egress (security review, low) -------
+
+
+def _search(n, query="python docs"):
+    return {
+        "id": f"step_{n}",
+        "description": "search",
+        "tool": "web_search",
+        "args": {"query": query},
+    }
+
+
+def test_ask_all_still_confirms_a_later_web_search(answers, monkeypatch):
+    monkeypatch.setenv("CODEBUD_PRIVACY", "private")
+    queue, prompts = answers
+    queue.extend(["a", "n"])  # approve all at step 1; refuse the search
+    agent = _Agent()
+    run_steps(agent, [_step(1), _search(2), _step(3)], "ask")
+    assert agent.ran == ["step_1", "step_3"]
+    assert any("Send it?" in p for p in prompts)
+
+
+def test_ask_all_still_confirms_a_network_step(answers, monkeypatch):
+    monkeypatch.setenv("CODEBUD_PRIVACY", "private")
+    queue, prompts = answers
+    queue.extend(["a", "y"])
+    agent = _Agent()
+    net = {"id": "step_2", "description": "x", "tool": "command",
+           "args": {"cmd": "pip download x", "network": True}}  # fmt: skip
+    run_steps(agent, [_step(1), net], "ask")
+    assert agent.ran == ["step_1", "step_2"]
+    assert sum("Send it?" in p for p in prompts) == 1
+
+
+def test_ask_all_at_trusted_asks_nothing_more(answers, monkeypatch):
+    monkeypatch.setenv("CODEBUD_PRIVACY", "trusted")
+    queue, prompts = answers
+    queue.append("a")
+    agent = _Agent()
+    run_steps(agent, [_step(1), _search(2)], "ask")
+    assert agent.ran == ["step_1", "step_2"] and len(prompts) == 1
+
+
+def test_no_answer_to_an_egress_prompt_is_not_a_yes(answers, monkeypatch):
+    monkeypatch.setenv("CODEBUD_PRIVACY", "private")
+    queue, _ = answers
+    queue.append("a")  # then end of input at the egress prompt
+    agent = _Agent()
+    outcome = run_steps(agent, [_step(1), _search(2)], "ask")
+    assert agent.ran == ["step_1"] and outcome.unconfirmed == 1

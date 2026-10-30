@@ -344,9 +344,11 @@ Queries are sent to @code{https://lite.duckduckgo.com/lite/} over HTTPS.
 This is the only network call Codebud makes that goes outside your machine
 (apart from Ollama on a remote host, or the @code{openai} backend), so the
 query is always shown before the step runs, and each search needs a
-confirmation: in @code{ask} mode with every step, in @code{auto} mode and
-in @command{codebud run} like a powerful command (@option{--yes} allows it
-unattended).  In @code{full-auto} mode searches run unattended, as all
+confirmation: in @code{ask} mode with every step --- and still after you
+answer @samp{a} (all) to run the rest without asking --- in @code{auto}
+mode and in @command{codebud run} like a powerful command (@option{--yes}
+allows it unattended).  The same holds for a command step that declares
+it needs the network.  In @code{full-auto} mode searches run unattended, as all
 steps do there; the query is still printed.  A project's
 @file{config.toml} cannot enable web search (@pxref{Configuration File}).
 

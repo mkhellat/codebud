@@ -23,8 +23,10 @@ import sys
 from dataclasses import dataclass, field
 from typing import Any
 
+from codebud import privacy
 from codebud.cli.display import print_status, print_step_header, print_step_result, print_warning
 from codebud.cli.errors import print_error
+from codebud.safety import egress_reason
 
 POLICIES = ("ask", "auto", "full-auto")
 
@@ -65,8 +67,20 @@ def run_steps(
         raise ValueError(f"unknown approval policy: {policy}")
     outcome = StepsOutcome()
     ask_each = policy == "ask"
+    all_approved = False  # "a" in ask mode: the rest run without asking...
     for number, step in enumerate(steps, 1):
         print_step_header(number, step)
+
+        # ...except a step that sends data off the machine, which is still
+        # confirmed (unless privacy is trusted), as the docs promise.
+        egress = all_approved and privacy.egress_needs_confirmation() and egress_reason(step)
+        if egress:
+            print_warning(egress)
+            answer = _ask("  Send it? [y/N] ")
+            if answer is None or not answer.startswith("y"):
+                outcome.unconfirmed += answer is None
+                print_status("-- skipped")
+                continue
 
         if ask_each:
             answer = _ask(f"  Execute step {number}? [y/N/a(all)/q(quit)] ")
@@ -75,6 +89,7 @@ def run_steps(
                 break
             if answer == "a":
                 ask_each = False  # this step and the rest run without asking
+                all_approved = True
             elif not answer.startswith("y"):
                 print_status("-- skipped")
                 continue
