@@ -110,7 +110,11 @@ deletes old sessions automatically (@pxref{The sessions Subcommand}).
 Codebud can encrypt the data it keeps with @uref{https://age-encryption.org,
 age}, so that a copy of your disk, a backup or another program running as
 you cannot read your conversations and step history without your
-passphrase.  It is off by default.  It needs the optional @code{pyrage}
+passphrase.  That protects what is already stored.  A program running as
+you can still change what happens next --- turn encryption off in your
+@file{config.toml}, or swap the public key that new data is encrypted to
+--- so such a program is outside what encryption at rest defends against;
+see the next paragraphs for what Codebud does notice.  It is off by default.  It needs the optional @code{pyrage}
 module (@pxref{Python Environment}); @command{codebud key status} says
 whether it is installed.
 
@@ -253,7 +257,10 @@ encrypts to it; every unlock checks that it still belongs to your key and
 stops with a clear message if it does not (someone replacing it would
 otherwise have new data encrypted to their key instead of yours).  While
 the key is unlocked, Codebud encrypts to the public key derived from the
-key itself.
+key itself.  Runs that only write and never unlock --- a @command{codebud
+run} without an encrypted index, say --- trust the file until the next
+unlock notices a change, so data saved in between may have gone to the
+wrong key.
 @end table
 
 @noindent
