@@ -914,5 +914,9 @@ Versions before October 2026 kept runtime data in a @file{data/} directory
 inside the source checkout.  On first start, Codebud copies anything found
 there into the data directory and reports how many files it copied; the
 originals are left in place, and you can delete @file{data/} once you have
-checked the new location.
+checked the new location.  Symbolic links there are never followed.  With
+encryption at rest on, the copies are encrypted as Codebud would write
+them (an old @file{entries.json} becomes sealed @file{entries.jsonl}
+lines); if encryption is on but has no key yet, nothing is copied until
+it has (@pxref{Encryption at Rest}).
 

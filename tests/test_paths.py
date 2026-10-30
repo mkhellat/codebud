@@ -262,3 +262,66 @@ def test_a_relative_xdg_path_is_ignored(monkeypatch, caplog, var, getter):
     assert result.is_absolute()
     assert "relative" not in result.parts
     assert "must be an absolute path" in caplog.text
+
+
+# --- legacy migration: no symlinks, encrypted when encryption is on ---------
+
+
+@pytest.fixture
+def legacy(tmp_path, monkeypatch):
+    root = tmp_path / "old" / "data"
+    (root / "memory").mkdir(parents=True)
+    (root / "sessions").mkdir()
+    monkeypatch.setattr(paths, "LEGACY_DATA_DIR", root)
+    return root
+
+
+def test_legacy_migration_skips_symlinks(legacy, tmp_path):
+    secret = tmp_path / "secret.txt"
+    secret.write_text("not codebud's")
+    (legacy / "sessions" / "20261025-000000-abcd.json").symlink_to(secret)
+    elsewhere = tmp_path / "elsewhere"
+    elsewhere.mkdir()
+    (elsewhere / "x.jsonl").write_text("{}\n")
+    (legacy / "linked").symlink_to(elsewhere, target_is_directory=True)
+    assert paths.migrate_legacy_data() == []
+    assert not (paths.data_dir() / "sessions" / "20261025-000000-abcd.json").exists()
+    assert not (paths.data_dir() / "linked").exists()
+
+
+def test_legacy_migration_encrypts_when_encryption_is_on(legacy, monkeypatch, fast_passphrase):
+    pytest.importorskip("pyrage")
+    from codebud import crypto
+
+    crypto.create_key("migration passphrase")
+    crypto.lock()
+    monkeypatch.setenv("CODEBUD_ENCRYPT", "1")
+    (legacy / "sessions" / "20261025-000000-abcd.json").write_text('{"history": ["SECRET"]}')
+    (legacy / "memory" / "entries.json").write_text(json.dumps([{"cmd": "SECRET-1"}]))
+    copied = paths.migrate_legacy_data()
+    new = paths.data_dir()
+    session = (new / "sessions" / "20261025-000000-abcd.json").read_bytes()
+    history = (new / "memory" / "entries.jsonl").read_text()
+    assert len(copied) == 2
+    assert crypto.is_encrypted(session) and b"SECRET" not in session
+    assert history.startswith("age:") and "SECRET" not in history
+    assert not (new / "memory" / "entries.json").exists()  # converted, not copied
+    assert (legacy / "memory" / "entries.json").exists()  # original kept
+
+
+def test_legacy_migration_waits_when_encryption_cannot_work(legacy, monkeypatch):
+    monkeypatch.setenv("CODEBUD_ENCRYPT", "1")  # but no key yet
+    (legacy / "sessions" / "20261025-000000-abcd.json").write_text("{}")
+    assert paths.migrate_legacy_data() == []
+    assert not (paths.data_dir() / "sessions").exists()
+
+
+def test_a_damaged_legacy_history_is_left_alone(legacy, monkeypatch, fast_passphrase):
+    pytest.importorskip("pyrage")
+    from codebud import crypto
+
+    crypto.create_key("migration passphrase")
+    monkeypatch.setenv("CODEBUD_ENCRYPT", "1")
+    (legacy / "memory" / "entries.json").write_text("{damaged")
+    assert paths.migrate_legacy_data() == []
+    assert (legacy / "memory" / "entries.json").read_text() == "{damaged"

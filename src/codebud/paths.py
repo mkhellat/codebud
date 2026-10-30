@@ -152,19 +152,73 @@ def migrate_legacy_data() -> list[str]:
     copy lands somewhere unexpected. A file is copied only if nothing exists
     at its new location, so newer data is never overwritten. Returns the
     new paths of copied files.
+
+    Symbolic links are never followed (a link in the old directory could
+    point anywhere). With encryption at rest on, the copies are written the
+    way codebud writes such data: sessions encrypted, history lines sealed,
+    an old entries.json array converted into sealed entries.jsonl lines; if
+    encryption is on but cannot work yet (no key), nothing is copied this
+    time rather than copied in plain text (security review, low).
     """
+    from codebud import crypto
+
     legacy = legacy_data_dir()
     if not legacy.is_dir() or legacy.resolve() == data_dir().resolve():
         return []
+    sealing = crypto.enabled()
+    if sealing:
+        try:
+            crypto.check_ready()
+        except crypto.CryptoError:
+            return []  # the CLI reports why; the originals wait for next time
+    root = legacy.resolve()
     copied = []
     for source in sorted(legacy.rglob("*")):
-        if not source.is_file() or source.suffix in (".lock", ".tmp"):
+        if source.is_symlink() or not source.is_file() or source.suffix in (".lock", ".tmp"):
             continue
-        target = data_dir() / source.relative_to(legacy)
+        if root not in source.resolve().parents:
+            continue  # reached through a linked directory
+        relative = source.relative_to(legacy)
+        target = data_dir() / relative
+        if sealing and relative.parts[0] == "memory" and source.name == "entries.json":
+            target = target.with_suffix(".jsonl")  # converted, never copied as is
         if target.exists():
             continue
         private_dir(target.parent)
-        shutil.copy2(source, target)
+        if sealing:
+            try:
+                _copy_sealed(source, target)
+            except (ValueError, OSError):
+                continue  # unreadable (e.g. a damaged entries.json): the original stays
+        else:
+            shutil.copy2(source, target, follow_symlinks=False)
         os.chmod(target, 0o600)  # the copy only; the original is left as it was
         copied.append(str(target))
     return copied
+
+
+def _copy_sealed(source: Path, target: Path) -> None:
+    """Copy ``source`` to ``target`` encrypted the way codebud stores it."""
+    import json
+
+    from codebud import crypto
+    from codebud.fsutil import atomic_write_bytes
+
+    raw = source.read_bytes()
+    if source.name == "entries.json":  # the pre-JSONL history: a JSON array
+        entries = json.loads(raw)
+        text = "".join(crypto.seal_line(json.dumps(e)) + "\n" for e in entries)
+        atomic_write_bytes(target, text.encode())
+    elif target.suffix == ".jsonl":
+        lines = raw.decode().splitlines()
+        sealed = [
+            line
+            if not line.strip() or crypto.is_encrypted_line(line)
+            else crypto.encrypt_line(line)
+            for line in lines
+        ]
+        atomic_write_bytes(target, "".join(line + "\n" for line in sealed).encode())
+    elif target.parent.name == "sessions" and target.suffix == ".json":
+        atomic_write_bytes(target, raw if crypto.is_encrypted(raw) else crypto.encrypt(raw))
+    else:
+        shutil.copy2(source, target, follow_symlinks=False)
