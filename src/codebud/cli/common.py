@@ -146,6 +146,16 @@ def unlock_project_index() -> None:
         os.environ["CODEBUD_RAG"] = "0"
 
 
+def reply_text(reply: str) -> str:
+    """A model reply for stdout: control characters shown as escapes on a
+    terminal, left as they are when piped (a script gets the raw text)."""
+    if not sys.stdout.isatty():
+        return reply
+    from codebud.cli.display import visible
+
+    return visible(reply, one_line=False)
+
+
 def show_widening(effective) -> None:
     """List how a project's policy would widen yours, flagging risky entries."""
     from codebud.cli.display import print_status

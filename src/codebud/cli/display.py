@@ -73,8 +73,9 @@ def print_rule() -> None:
 
 
 def print_assistant_reply(reply: str) -> None:
-    """Print a chat_reply from the model, labeled and colored consistently."""
-    _err(f"\n{_CYAN}{_BOLD}Codebud:{_RESET} {reply}\n", flush=True)
+    """Print a chat_reply from the model, labeled and colored consistently
+    (control characters in it are shown, not obeyed)."""
+    _err(f"\n{_CYAN}{_BOLD}Codebud:{_RESET} {visible(reply, one_line=False)}\n", flush=True)
 
 
 # ---------------------------------------------------------------------------
@@ -82,12 +83,31 @@ def print_assistant_reply(reply: str) -> None:
 # ---------------------------------------------------------------------------
 
 
-def _visible(text: str, *, one_line: bool = True) -> str:
-    """``text`` with control characters shown, not obeyed (a model-written
-    description or path must not be able to move the cursor or rewrite
-    what the user is approving)."""
+# Kept although not "printable": the zero-width joiner holds emoji
+# sequences together.
+_KEEP_ALWAYS = "\u200d"
+
+
+def visible(text: str, *, one_line: bool = True) -> str:
+    """``text`` with control characters shown as escapes, never obeyed.
+
+    Model replies, step output, file contents and error text are not
+    codebud's own: an escape sequence or carriage return in them could
+    move the cursor, rewrite what the user is approving or hide text, and
+    bidi overrides can make text read differently than it is (security
+    review M2). Newlines (unless ``one_line``) and tabs are kept; Windows
+    line ends are normalised; everything else non-printable -- C0/C1
+    controls, ESC, DEL, bidi and other format characters -- is shown as
+    \\x1b, \\r, \\u202e, ...
+    """
+    text = str(text)
+    if not one_line:
+        text = text.replace("\r\n", "\n")
     keep = "\t" if one_line else "\t\n"
-    return "".join(ch if ch.isprintable() or ch in keep else repr(ch)[1:-1] for ch in str(text))
+    return "".join(
+        ch if ch.isprintable() or ch in keep or ch in _KEEP_ALWAYS else repr(ch)[1:-1]
+        for ch in text
+    )
 
 
 def step_target(step: dict[str, Any]) -> str:
@@ -106,12 +126,12 @@ def step_target(step: dict[str, Any]) -> str:
         shown = real if real == os.path.abspath(path) else f"{path} -> {real}"
         if tool == "file_write":
             shown += f" ({len(args.get('content', '') or '')} bytes)"
-        return _visible(shown)
+        return visible(shown)
     if tool == "command":
-        cmd = _visible(args.get("cmd", ""))
+        cmd = visible(args.get("cmd", ""))
         return cmd + ("  [network]" if args.get("network") else "")
     if tool == "web_search":
-        return _visible(f'query: "{args.get("query", "")}"')
+        return visible(f'query: "{args.get("query", "")}"')
     return ""
 
 
@@ -126,7 +146,7 @@ def print_plan(plan: dict[str, Any], *, verbose: bool = False) -> None:
     _err(f"\n{_BOLD}Plan ({n} step{'s' if n != 1 else ''}){_RESET}")
     for i, step in enumerate(steps, 1):
         tool = step.get("tool", "?")
-        desc = _visible(step.get("description", ""))
+        desc = visible(step.get("description", ""))
         _err(f"  {_CYAN}[{i}]{_RESET} {_BOLD}{tool:<18}{_RESET} {desc}")
         target = step_target(step)
         if target:
@@ -134,7 +154,7 @@ def print_plan(plan: dict[str, Any], *, verbose: bool = False) -> None:
         if verbose:
             args = step.get("args", {})
             for k, v in args.items():
-                _err(f"       {_DIM}{k}: {_visible(v, one_line=False)}{_RESET}")
+                _err(f"       {_DIM}{k}: {visible(v, one_line=False)}{_RESET}")
     _err()
 
 
@@ -142,13 +162,13 @@ def print_step_header(index: int, step: dict[str, Any]) -> None:
     """The step about to run: what it acts on (always, even in full-auto)
     and, for a patch, the whole diff."""
     tool = step.get("tool", "?")
-    desc = _visible(step.get("description", ""))
+    desc = visible(step.get("description", ""))
     _err(f"{_BOLD}Step {index} — {tool}:{_RESET} {desc}")
     target = step_target(step)
     if target:
         _err(f"  {target}")
     if tool == "patch":
-        for line in _visible(step.get("args", {}).get("patch", ""), one_line=False).splitlines():
+        for line in visible(step.get("args", {}).get("patch", ""), one_line=False).splitlines():
             _err(f"  {_DIM}|{_RESET} {line}")
 
 
@@ -164,8 +184,9 @@ def print_step_result(result: dict[str, Any], *, verbose: bool = False, full: bo
     ask for more, so they pass full=True to always print everything untruncated.
     """
     rc = result.get("returncode", 0)
-    stdout = result.get("stdout", "") or ""
-    stderr = result.get("stderr", "") or ""
+    # A step's output is whatever the program printed: shown, not obeyed.
+    stdout = visible(result.get("stdout", "") or "", one_line=False)
+    stderr = visible(result.get("stderr", "") or "")
     stdout_lines = stdout.splitlines()
     lines = len(stdout_lines)
     if rc == 0:

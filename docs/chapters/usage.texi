@@ -1170,6 +1170,17 @@ Type @code{/output} to see the rest of the @emph{last} executed step's
 output, or start the chat with @command{codebud -v chat} to always show
 full output for every step in the session.
 
+@cindex control characters
+A step's output, the model's replies and error messages are not
+Codebud's own text, so control characters in them are shown as escapes
+(@samp{\x1b}, @samp{\r}, @samp{\u202e}) rather than obeyed: an escape
+sequence or carriage return cannot move the cursor and rewrite what you
+are reading or approving, and a right-to-left override cannot make text
+read differently than it is.  Newlines, tabs and emoji are kept.  When
+the output of @command{run} or @command{plan} is piped rather than shown
+on a terminal, a chat reply on standard output is passed through
+unchanged, for scripts.
+
 
 @node Verbose and JSON Output
 @section Verbose and JSON Output

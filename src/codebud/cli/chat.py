@@ -22,6 +22,7 @@ from codebud.cli.display import (
     print_rule,
     print_status,
     print_warning,
+    visible,
 )
 from codebud.cli.errors import print_error
 from codebud.cli.steps import policy_for_mode, run_steps
@@ -156,7 +157,7 @@ def _slash_history(state: ChatState, rest: str) -> None:
         print_status("(no history yet)\n")
         return
     for i, t in enumerate(history, 1):
-        print(f"  [{i}] {t['role'].upper()}: {t['content'][:120]}", file=sys.stderr)
+        print(f"  [{i}] {t['role'].upper()}: {visible(t['content'][:120])}", file=sys.stderr)
     print(file=sys.stderr)
 
 
@@ -359,7 +360,7 @@ def _slash_output(state: ChatState, rest: str) -> None:
     if out is None:
         print_status("(no step output yet)\n")
         return
-    stdout = (out.get("stdout") or "").rstrip()
+    stdout = visible(out.get("stdout") or "", one_line=False).rstrip()
     if stdout:
         print(stdout, file=sys.stderr)
     else:

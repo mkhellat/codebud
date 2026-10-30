@@ -32,7 +32,7 @@ def cmd_run(args):
             prog.stop()
 
         if plan.get("status") == "chat_reply":
-            print(plan.get("reply", ""), flush=True)
+            print(common.reply_text(plan.get("reply", "")), flush=True)
             return
 
         if plan.get("status") != "ok":
@@ -81,7 +81,7 @@ def cmd_plan(args):
             prog.stop()
 
         if plan.get("status") == "chat_reply":
-            print(plan.get("reply", ""), flush=True)
+            print(common.reply_text(plan.get("reply", "")), flush=True)
             return
 
         if plan.get("status") != "ok":

@@ -125,7 +125,9 @@ def explain(error: str) -> tuple[str, str] | None:
 
 def print_error(error: str, *, label: str = "Error") -> None:
     """Print a formatted error with an explanation and fix hint if known."""
-    print(f"\n{_RED}{_BOLD}{label}:{_RESET} {error}", file=sys.stderr)
+    from codebud.cli.display import visible
+
+    print(f"\n{_RED}{_BOLD}{label}:{_RESET} {visible(error, one_line=False)}", file=sys.stderr)
     result = explain(error)
     if result:
         explanation, fix = result
