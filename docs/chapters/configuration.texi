@@ -196,9 +196,9 @@ from, highest first:
 @item @code{embed_model} @tab @env{EMBED_MODEL} @tab string
 @item @code{rag} @tab @env{CODEBUD_RAG} @tab @code{true} / @code{false}
 @item @code{rag_hints} @tab @env{CODEBUD_RAG_HINTS} @tab @code{true} / @code{false}
-@item @code{num_ctx} @tab @env{CODEBUD_NUM_CTX} @tab integer
+@item @code{num_ctx} @tab @env{CODEBUD_NUM_CTX} @tab integer (user file only)
 @item @code{openai_api_key} @tab @env{OPENAI_API_KEY} @tab string (user file only)
-@item @code{openai_model} @tab @env{OPENAI_MODEL} @tab string
+@item @code{openai_model} @tab @env{OPENAI_MODEL} @tab string (user file only)
 @item @code{web_search} @tab @env{WEB_SEARCH_ENABLED} @tab @code{true} / @code{false} (user file only)
 @item @code{mask_secrets} @tab @env{CODEBUD_MASK_SECRETS} @tab @code{true} / @code{false} (user file only)
 @item @code{encrypt} @tab @env{CODEBUD_ENCRYPT} @tab @code{true} / @code{false} (user file only)
@@ -214,7 +214,8 @@ Ollama URL, plain-http opt-in, the OpenAI key and web search --- are
 accepted only from your own file or the environment, and so are
 @code{mask_secrets}, @code{encrypt}, @code{step_env},
 @code{session_retention_days} and @code{privacy}, which protect your
-data.  In a project's file
+data, and @code{num_ctx} (it sizes the model's memory use) and
+@code{openai_model} (it decides what is billed to your OpenAI account).  In a project's file
 they are ignored with a warning: cloning a repository must never be able
 to send your prompts somewhere else or weaken your privacy.  The
 same goes for unknown keys, values of the wrong type and a file that is not

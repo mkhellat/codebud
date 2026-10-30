@@ -52,6 +52,7 @@ class Setting:
     egress: bool = False  # may make data leave the machine
     secret: bool = False  # never displayed
     protective: bool = False  # protects stored data; weakening it is the user's call
+    user_only: str = ""  # another reason a project file may not set it (the reason)
 
 
 SETTINGS = [
@@ -62,9 +63,16 @@ SETTINGS = [
     Setting("embed_model", "EMBED_MODEL", "all-minilm", str),
     Setting("rag", "CODEBUD_RAG", True, bool),
     Setting("rag_hints", "CODEBUD_RAG_HINTS", True, bool),
-    Setting("num_ctx", "CODEBUD_NUM_CTX", 8192, int),
+    # A project file could ask for a window that exhausts the machine's memory.
+    Setting("num_ctx", "CODEBUD_NUM_CTX", 8192, int, user_only="sizes the model's memory use"),
     Setting("openai_api_key", "OPENAI_API_KEY", None, str, egress=True, secret=True),
-    Setting("openai_model", "OPENAI_MODEL", "gpt-3.5-turbo", str),
+    Setting(
+        "openai_model",
+        "OPENAI_MODEL",
+        "gpt-3.5-turbo",
+        str,
+        user_only="decides what is billed to your OpenAI account",
+    ),
     Setting("web_search", "WEB_SEARCH_ENABLED", False, bool, egress=True),
     Setting("mask_secrets", "CODEBUD_MASK_SECRETS", True, bool, protective=True),
     # Encryption at rest (crypto.py): sessions, step history, new indexes.
@@ -129,8 +137,15 @@ def _read(path: Path | None, source: str) -> dict[str, str]:
         if setting is None:
             _warn("Ignoring unknown setting '%s' in %s", key, path)
             continue
-        if source == "project config" and (setting.egress or setting.protective):
-            why = "decides where data is sent" if setting.egress else "protects your stored data"
+        if source == "project config" and (
+            setting.egress or setting.protective or setting.user_only
+        ):
+            if setting.egress:
+                why = "decides where data is sent"
+            elif setting.protective:
+                why = "protects your stored data"
+            else:
+                why = setting.user_only
             _warn(
                 "Ignoring '%s' in %s: it can only be set in %s or the environment, since it %s",
                 key,

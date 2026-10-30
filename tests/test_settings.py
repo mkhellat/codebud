@@ -243,3 +243,38 @@ def test_egress_switches_stay_off_unless_clearly_on(monkeypatch):
     assert remote_http_refusal("http://10.0.0.5:11434")
     monkeypatch.setenv("CODEBUD_ALLOW_REMOTE_HTTP", "yes")
     assert remote_http_refusal("http://10.0.0.5:11434") is None
+
+
+@pytest.mark.parametrize(
+    "line, env, reason",
+    [
+        ("num_ctx = 1000000", "CODEBUD_NUM_CTX", "sizes the model's memory use"),
+        ('openai_model = "gpt-4-32k"', "OPENAI_MODEL", "billed to your OpenAI account"),
+    ],
+)
+def test_a_project_file_cannot_set_resource_or_billing_settings(
+    tmp_path, monkeypatch, caplog, line, env, reason
+):
+    # Security review (low): a cloned repo could exhaust memory or run up a bill.
+    monkeypatch.setattr(settings, "_warned", set())
+    monkeypatch.delenv(env, raising=False)
+    (tmp_path / ".codebud").mkdir()
+    (tmp_path / ".codebud" / "config.toml").write_text(line + "\n")
+    monkeypatch.chdir(tmp_path)
+    assert env not in settings._file_values()
+    assert reason in caplog.text
+
+
+def test_a_project_file_can_still_choose_its_model(tmp_path, monkeypatch):
+    monkeypatch.delenv("OLLAMA_MODEL", raising=False)
+    (tmp_path / ".codebud").mkdir()
+    (tmp_path / ".codebud" / "config.toml").write_text('model = "qwen2.5-coder:7b"\n')
+    monkeypatch.chdir(tmp_path)
+    assert settings._file_values()["OLLAMA_MODEL"] == ("qwen2.5-coder:7b", "project config")
+
+
+def test_your_own_file_can_set_them(monkeypatch):
+    monkeypatch.delenv("CODEBUD_NUM_CTX", raising=False)
+    settings.user_config_file().parent.mkdir(parents=True, exist_ok=True)
+    settings.user_config_file().write_text("num_ctx = 32768\n")
+    assert settings._file_values()["CODEBUD_NUM_CTX"] == ("32768", "user config")
