@@ -324,7 +324,10 @@ def decrypt_line(line: str) -> str:
 
 def enabled() -> bool:
     """Whether codebud encrypts what it stores (CODEBUD_ENCRYPT / encrypt = true)."""
-    return os.environ.get(ENCRYPT_ENV) == "1"
+    from codebud import settings
+
+    # A value that is not a clear "no" keeps data encrypted (the safe side).
+    return settings.flag(ENCRYPT_ENV, False, unknown=True)
 
 
 def check_ready() -> None:

@@ -180,3 +180,66 @@ def test_each_problem_is_reported_once(env, tmp_path, caplog):
         settings.resolve()
         settings.resolve()
     assert caplog.text.count("Ignoring 'web_search'") == 1
+
+
+# --- one boolean parser for every switch (security review, low) -------------
+
+
+@pytest.mark.parametrize("value", ["1", "true", "TRUE", "yes", "on", " True "])
+def test_flag_true_values(monkeypatch, value):
+    monkeypatch.setenv("CODEBUD_TEST_FLAG", value)
+    assert settings.flag("CODEBUD_TEST_FLAG", False) is True
+
+
+@pytest.mark.parametrize("value", ["0", "false", "No", "off"])
+def test_flag_false_values(monkeypatch, value):
+    monkeypatch.setenv("CODEBUD_TEST_FLAG", value)
+    assert settings.flag("CODEBUD_TEST_FLAG", True) is False
+
+
+def test_flag_unset_or_empty_gives_the_default(monkeypatch):
+    monkeypatch.delenv("CODEBUD_TEST_FLAG", raising=False)
+    assert settings.flag("CODEBUD_TEST_FLAG", True) is True
+    monkeypatch.setenv("CODEBUD_TEST_FLAG", "")
+    assert settings.flag("CODEBUD_TEST_FLAG", False) is False
+
+
+def test_flag_unknown_warns_and_takes_the_safe_side(monkeypatch, caplog):
+    monkeypatch.setattr(settings, "_warned", set())
+    monkeypatch.setenv("CODEBUD_TEST_FLAG", "enabled")
+    assert settings.flag("CODEBUD_TEST_FLAG", False, unknown=True) is True
+    assert "not a yes/no value" in caplog.text
+
+
+def test_encrypt_true_means_on(monkeypatch):
+    # The bug: CODEBUD_ENCRYPT=true used to mean "off".
+    from codebud import crypto
+
+    monkeypatch.setenv("CODEBUD_ENCRYPT", "true")
+    assert crypto.enabled()
+    monkeypatch.setenv("CODEBUD_ENCRYPT", "maybe")  # unclear: keep data encrypted
+    assert crypto.enabled()
+
+
+def test_masking_stays_on_unless_clearly_off(monkeypatch):
+    from codebud import redact
+
+    monkeypatch.setenv("CODEBUD_MASK_SECRETS", "nope")
+    assert redact.enabled()
+    monkeypatch.setenv("CODEBUD_MASK_SECRETS", "off")
+    assert not redact.enabled()
+
+
+def test_egress_switches_stay_off_unless_clearly_on(monkeypatch):
+    from codebud.llm_stub import remote_http_refusal
+    from codebud.tools import web_search
+
+    monkeypatch.setenv("WEB_SEARCH_ENABLED", "sure")
+    assert not web_search.enabled()
+    monkeypatch.setenv("WEB_SEARCH_ENABLED", "on")
+    monkeypatch.setenv("CODEBUD_PRIVACY", "private")
+    assert web_search.enabled()
+    monkeypatch.setenv("CODEBUD_ALLOW_REMOTE_HTTP", "probably")
+    assert remote_http_refusal("http://10.0.0.5:11434")
+    monkeypatch.setenv("CODEBUD_ALLOW_REMOTE_HTTP", "yes")
+    assert remote_http_refusal("http://10.0.0.5:11434") is None

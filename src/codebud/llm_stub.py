@@ -132,7 +132,9 @@ def remote_http_refusal(base: str) -> str | None:
     """
     if not is_remote(base) or urlsplit(base).scheme != "http":
         return None
-    if os.environ.get("CODEBUD_ALLOW_REMOTE_HTTP", "").lower() in ("1", "true", "yes"):
+    from codebud import settings
+
+    if settings.flag("CODEBUD_ALLOW_REMOTE_HTTP", False, unknown=False):
         return None
     return (
         f"OLLAMA_BASE_URL {base} is another machine over plain http: prompts would "

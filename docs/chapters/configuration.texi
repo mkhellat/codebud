@@ -31,6 +31,15 @@ keeps its files.
 The table below lists every variable Codebud reads, its default, and what
 it does.
 
+@cindex yes/no values
+Variables that switch something on or off accept @code{1}, @code{true},
+@code{yes} or @code{on}, and @code{0}, @code{false}, @code{no} or
+@code{off}, in any case; unset or empty means the default.  Any other
+value is warned about and taken the safe way: protective switches
+(@env{CODEBUD_ENCRYPT}, @env{CODEBUD_MASK_SECRETS}) stay on, switches
+that let data leave the machine (@env{WEB_SEARCH_ENABLED},
+@env{CODEBUD_ALLOW_REMOTE_HTTP}) stay off.
+
 @multitable @columnfractions .25 .25 .50
 @headitem Variable @tab Default @tab Purpose
 @item @env{OLLAMA_MODEL}

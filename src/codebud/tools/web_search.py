@@ -23,7 +23,6 @@ No additional dependencies are required beyond the already-listed
 
 import json
 import logging
-import os
 import re
 from typing import Any
 
@@ -33,7 +32,9 @@ logger = logging.getLogger(__name__)
 
 
 def _switched_on() -> bool:
-    return os.environ.get("WEB_SEARCH_ENABLED", "").lower() in ("1", "true", "yes")
+    from codebud import settings
+
+    return settings.flag("WEB_SEARCH_ENABLED", False, unknown=False)  # sends data out
 
 
 def enabled() -> bool:

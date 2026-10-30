@@ -19,7 +19,6 @@ CODEBUD_RAG_HINTS=0 turns the hints off; they are also quiet while
 project context is off (/rag off, --no-rag, CODEBUD_RAG=0).
 """
 
-import os
 from pathlib import Path
 
 from codebud import crypto
@@ -59,7 +58,9 @@ class IndexHints:
         self._changes_hinted = False
 
     def _active(self) -> bool:
-        return os.environ.get("CODEBUD_RAG_HINTS", "1") != "0" and self.agent.get_rag()
+        from codebud import settings
+
+        return settings.flag("CODEBUD_RAG_HINTS", True) and self.agent.get_rag()
 
     def at_start(self) -> str | None:
         """A hint for the start of a chat, or None."""

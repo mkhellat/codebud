@@ -171,6 +171,36 @@ def apply() -> None:
             _applied[env] = (value, source)
 
 
+_TRUE = ("1", "true", "yes", "on")
+_FALSE = ("0", "false", "no", "off")
+
+
+def flag(env: str, default: bool, unknown: bool | None = None) -> bool:
+    """The boolean setting ``env``: 1/true/yes/on or 0/false/no/off, any case.
+
+    One parser for every switch (security review, low: CODEBUD_ENCRYPT=true
+    used to mean "off" while other switches accepted it). Unset or empty
+    gives ``default``. Anything else is warned about once and gives
+    ``unknown`` -- the safe side for that switch: on for protective ones
+    (encryption, masking), off for egress ones -- or ``default``.
+    """
+    raw = os.environ.get(env, "").strip().lower()
+    if not raw:
+        return default
+    if raw in _TRUE:
+        return True
+    if raw in _FALSE:
+        return False
+    fallback = default if unknown is None else unknown
+    _warn(
+        "%s=%r is not a yes/no value (1/true/yes/on or 0/false/no/off); treating it as %s",
+        env,
+        os.environ.get(env),
+        "on" if fallback else "off",
+    )
+    return fallback
+
+
 def from_environment(env: str) -> bool:
     """Whether ``env`` was set outside codebud (not from a file or profile)."""
     if env not in os.environ:

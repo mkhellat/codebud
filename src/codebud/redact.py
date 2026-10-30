@@ -32,7 +32,6 @@ ordinary words would be). Only what is written to disk is masked
 (sessions, step history); prompts sent to the model are not.
 """
 
-import os
 import re
 from typing import Any
 
@@ -144,7 +143,10 @@ _RULES: list[tuple[re.Pattern, str]] = [
 
 def enabled() -> bool:
     """Whether masking is on: CODEBUD_MASK_SECRETS, default on."""
-    return os.environ.get("CODEBUD_MASK_SECRETS", "1").strip().lower() not in ("0", "false", "no")
+    from codebud import settings
+
+    # A value that is not a clear "no" keeps masking on (the safe side).
+    return settings.flag("CODEBUD_MASK_SECRETS", True, unknown=True)
 
 
 def redact(text: str) -> str:

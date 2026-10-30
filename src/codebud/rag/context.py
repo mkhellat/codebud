@@ -23,7 +23,6 @@ so patches built from it still match.
 """
 
 import logging
-import os
 import re
 import secrets
 
@@ -69,7 +68,9 @@ def _label_imitations(text: str) -> str:
 
 
 def enabled() -> bool:
-    return os.environ.get("CODEBUD_RAG", "1") != "0"
+    from codebud import settings
+
+    return settings.flag("CODEBUD_RAG", True)
 
 
 def retrieve(message: str, history: list[dict[str, str]] | None = None) -> list[Hit]:
