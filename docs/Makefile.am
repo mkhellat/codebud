@@ -22,6 +22,6 @@ codebud_TEXINFOS = \
 	chapters/troubleshooting.texi \
 	chapters/usage.texi
 
-AM_MAKEINFOHTMLFLAGS = --no-split
+AM_MAKEINFOHTMLFLAGS = --split=node
 
 MAINTAINERCLEANFILES = Makefile.in
