@@ -105,6 +105,7 @@ for the full list.
 | `make installcheck` | Check the installed `codebud` runs |
 | `make info` / `html` / `pdf` | Build the manual |
 | `make dist` / `make distcheck` | Build / fully verify the release tarball |
+| `make release-check` | Is this checkout ready to release? (read-only; needs the dev tools) |
 | `make clean` / `make distclean` | Remove what make / configure produced |
 | `make maintainer-clean` | Back to a fresh checkout (then `./bootstrap`); `make clean-venv` also drops `.venv/` |
 

@@ -555,3 +555,30 @@ one, however many fixes come with it).  A change that breaks
 compatibility says so in its commit message (@samp{BREAKING}) and in
 @file{NEWS}, with what the user has to do.
 
+@subheading Checking a release
+@cindex release check
+
+@command{make release-check} says whether the checkout is ready to be
+released.  It never tags, uploads or fetches anything, and it lists every
+problem at once rather than stopping at the first:
+
+@itemize
+@item the checkout is on @code{main}, clean, and every remote's
+@code{main} is at @code{HEAD} (as last fetched or pushed);
+@item no tag @samp{v@var{version}} exists yet;
+@item the newest @file{NEWS} entry is this version and carries its
+release date instead of @samp{(unreleased)};
+@item @command{ruff check} and @command{ruff format --check} pass;
+@item @command{make distcheck} passes;
+@item the sdist and wheel build, pass @command{twine check}, and the
+wheel installs into a fresh virtual environment where
+@command{codebud version} reports this version.  This step downloads the
+runtime dependencies.
+@end itemize
+
+It needs the development tools (@command{ruff}, @code{build},
+@command{twine}) in the configured Python, so configure with
+@samp{PYTHON="$PWD/.venv/bin/python"} after @command{make install-dev}.
+@samp{scripts/release-check --quick @var{srcdir} @var{python}} runs only
+the fast checks (everything before @command{make distcheck}).
+

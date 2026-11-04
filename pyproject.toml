@@ -54,6 +54,7 @@ dev = [
     "pytest-cov>=4.0",
     "ruff>=0.3",
     "build>=1.0",
+    "twine>=5.0",  # make release-check: twine check
     "numpy>=1.24",  # the rag extra, so its tests run
     "pyrage>=1.2",  # the crypto extra, so its tests run
 ]

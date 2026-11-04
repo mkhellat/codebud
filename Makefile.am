@@ -72,6 +72,7 @@ help:
 	  '  make format           ruff format + ruff check --fix' \
 	  '  make coverage         tests with branch coverage -> htmlcov/' \
 	  '  make dist-python      Python sdist and wheel -> dist/' \
+	  '  make release-check    is this checkout ready to release? (read-only)' \
 	  '  make install-link     link .venv/bin/codebud into LINKDIR ($(LINKDIR))' \
 	  '  make uninstall-link   remove that link' \
 	  '  make clean-dev        remove bytecode, tool caches, egg-info (keeps .venv/)' \
@@ -99,6 +100,11 @@ coverage:
 
 dist-python:
 	"$(VENVPY)" -m build --outdir dist "$(srcdir)"
+
+# Read-only: never tags or uploads. Needs the dev tools (ruff, build,
+# twine) in $(PYTHON); see scripts/release-check.
+release-check:
+	$(SHELL) "$(srcdir)/scripts/release-check" "$(abs_srcdir)" "$(PYTHON)" "$(MAKE)"
 
 install-link:
 	$(MKDIR_P) "$(LINKDIR)"
@@ -133,5 +139,5 @@ clean-dev:
 	rm -rf .pytest_cache .ruff_cache src/*.egg-info
 	find . -path ./$(VENV) -prune -o -name __pycache__ -type d -prune -exec rm -rf {} +
 
-.PHONY: help install-dev lint format coverage dist-python install-link uninstall-link \
+.PHONY: help install-dev lint format coverage dist-python release-check install-link uninstall-link \
         clean-dev clean-venv

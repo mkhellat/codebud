@@ -1,0 +1,136 @@
+#!/bin/sh
+# release-check — is this checkout ready to be released?
+#
+#   scripts/release-check [--quick] SRCDIR PYTHON [MAKE]
+#
+# Runs every check and lists all failures at the end.  Read-only: it never
+# tags, uploads or fetches.  --quick stops after the fast checks (git
+# state, tag, NEWS, lint); the full run adds `make distcheck`, builds the
+# sdist and wheel, runs `twine check` and installs the wheel into a
+# throwaway venv (this step downloads the runtime dependencies).
+#
+# `make release-check` runs it with the configured Python.
+
+quick=no
+if [ "$1" = "--quick" ]; then
+    quick=yes
+    shift
+fi
+srcdir=${1:?usage: release-check [--quick] SRCDIR PYTHON [MAKE]}
+python=${2:?usage: release-check [--quick] SRCDIR PYTHON [MAKE]}
+make=${3:-make}
+
+failures=0
+fail() {
+    printf 'FAIL  %s\n' "$*"
+    failures=$((failures + 1))
+}
+pass() {
+    printf 'ok    %s\n' "$*"
+}
+
+cd "$srcdir" || exit 2
+
+version=$(sed -n 's/^version = "\([^"]*\)".*/\1/p' pyproject.toml)
+if [ -z "$version" ]; then
+    echo "release-check: no version in pyproject.toml" >&2
+    exit 2
+fi
+echo "release-check: codebud $version"
+
+# ─── Git state ──────────────────────────────────────────────────────────────
+
+if ! git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+    fail "not a git checkout"
+else
+    branch=$(git symbolic-ref --short -q HEAD)
+    if [ "$branch" = main ]; then pass "on branch main"; else fail "on branch '${branch:-detached HEAD}', not main"; fi
+
+    if [ -z "$(git status --porcelain)" ]; then
+        pass "working tree clean"
+    else
+        fail "working tree has uncommitted or untracked files (git status)"
+    fi
+
+    # Every remote's main must be at HEAD (as last fetched or pushed).
+    head=$(git rev-parse HEAD)
+    for remote in $(git remote); do
+        theirs=$(git rev-parse -q --verify "refs/remotes/$remote/main") || continue
+        if [ "$theirs" = "$head" ]; then
+            pass "$remote/main is at HEAD"
+        else
+            fail "$remote/main is not at HEAD (push first)"
+        fi
+    done
+
+    if git rev-parse -q --verify "refs/tags/v$version" >/dev/null; then
+        fail "tag v$version already exists: bump the version"
+    else
+        pass "tag v$version is free"
+    fi
+fi
+
+# ─── NEWS ───────────────────────────────────────────────────────────────────
+
+top=$(grep -m1 '^\* Noteworthy changes in release ' NEWS 2>/dev/null)
+case $top in
+    "* Noteworthy changes in release $version "*unreleased*)
+        fail "NEWS: release $version is still marked (unreleased): put the release date there" ;;
+    "* Noteworthy changes in release $version "*)
+        pass "NEWS has a dated entry for $version" ;;
+    *)
+        fail "NEWS: newest entry is not release $version" ;;
+esac
+
+# ─── Lint ───────────────────────────────────────────────────────────────────
+
+if "$python" -m ruff check --quiet . >/dev/null 2>&1; then pass "ruff check"; else fail "ruff check (run: make lint)"; fi
+if "$python" -m ruff format --check --quiet . >/dev/null 2>&1; then pass "ruff format --check"; else fail "ruff format --check (run: make format)"; fi
+
+# ─── Builds (skipped with --quick) ──────────────────────────────────────────
+
+if [ "$quick" = no ]; then
+    tmp=$(mktemp -d "${TMPDIR:-/tmp}/codebud-release-check.XXXXXX") || exit 2
+    trap 'rm -rf "$tmp"' EXIT HUP INT TERM
+
+    if $make distcheck >"$tmp/distcheck.log" 2>&1; then
+        pass "make distcheck"
+    else
+        fail "make distcheck (last lines below)"
+        tail -n 20 "$tmp/distcheck.log"
+    fi
+
+    if "$python" -m build --outdir "$tmp/dist" . >"$tmp/build.log" 2>&1; then
+        pass "sdist and wheel build"
+        if "$python" -m twine check --strict "$tmp"/dist/* >"$tmp/twine.log" 2>&1; then
+            pass "twine check"
+        else
+            fail "twine check"
+            cat "$tmp/twine.log"
+        fi
+        wheel=$(ls "$tmp"/dist/*.whl)
+        if "$python" -m venv "$tmp/venv" &&
+            "$tmp/venv/bin/python" -m pip install --quiet "$wheel" >"$tmp/pip.log" 2>&1; then
+            got=$("$tmp/venv/bin/codebud" version 2>&1 | head -n 1)
+            if [ "$got" = "codebud  $version" ]; then
+                pass "installed wheel runs: $got"
+            else
+                fail "installed wheel says '$got', expected 'codebud  $version'"
+            fi
+        else
+            fail "wheel does not install into a fresh venv (last lines below)"
+            tail -n 5 "$tmp/pip.log"
+        fi
+    else
+        fail "sdist and wheel build (last lines below)"
+        tail -n 20 "$tmp/build.log"
+    fi
+fi
+
+echo
+if [ "$failures" -eq 0 ]; then
+    echo "release-check: codebud $version is ready to release."
+    exit 0
+fi
+echo "release-check: $failures check(s) failed."
+exit 1
