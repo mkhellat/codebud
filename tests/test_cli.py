@@ -1221,6 +1221,14 @@ class TestChatSubcommand(_ChatHarness):
         assert agent.closed
         assert agent.get_history() == []
 
+    @pytest.mark.parametrize("word", ["/exit", "/quit", "/EXIT", "/quit now"])
+    def test_slash_exit_and_quit_end_the_session(self, monkeypatch, capsys, word):
+        """/exit and /quit used to answer "Unknown command" and keep going."""
+        agent = self._run_chat(monkeypatch, [word, "do something", "n"])
+        assert agent.closed
+        assert agent.get_history() == []
+        assert "Unknown command" not in capsys.readouterr().err
+
     def test_empty_line_does_not_end_the_session(self, monkeypatch):
         """Pressing Enter on an empty line used to end the chat."""
         agent = self._run_chat(monkeypatch, ["", "   ", "do something", "n"])

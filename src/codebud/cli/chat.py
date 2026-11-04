@@ -140,6 +140,14 @@ def _with_progress(state: ChatState, work):
 # ---------------------------------------------------------------------------
 
 
+class _EndChat(Exception):
+    """Raised by /exit and /quit to leave the chat loop."""
+
+
+def _slash_exit(state: ChatState, rest: str) -> None:
+    raise _EndChat
+
+
 def _slash_help(state: ChatState, rest: str) -> None:
     print(chat_input.help_text(), file=sys.stderr)
 
@@ -386,6 +394,8 @@ SLASH_HANDLERS = {
     "/models": _slash_models,
     "/plan": _slash_plan,
     "/output": _slash_output,
+    "/exit": _slash_exit,
+    "/quit": _slash_exit,
 }
 
 
@@ -553,7 +563,10 @@ def cmd_chat(args):
             if message.lower() in ("quit", "exit", "q"):
                 break
             if message.startswith("/"):
-                _handle_slash(state, message)
+                try:
+                    _handle_slash(state, message)
+                except _EndChat:
+                    break
                 continue
             _handle_request(state, message)
             print(file=sys.stderr)

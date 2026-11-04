@@ -15,6 +15,8 @@ a safety policy you can read and change.
   full-auto, plan and edit; sessions saved and resumed (chat --resume);
   codebud doctor, history, sessions, models, config, profiles, version.
 
+  Chat ends on quit, exit, q, /exit, /quit or Ctrl-D.
+
   Project search: codebud index builds a per-project index, and the
   most relevant code goes into each plan as project context.
 

@@ -47,8 +47,8 @@ def _completions(text):
 def test_every_slash_command_has_a_description():
     names = [name for name, _ in chat_input.SLASH_COMMANDS]
     assert len(names) == len(set(names))
-    for expected in ["/help", "/mode", "/model", "/models", "/compact", "/save", "/output"]:
-        assert expected in names
+    expected = {"/help", "/mode", "/model", "/models", "/compact", "/save", "/output"}
+    assert expected | {"/exit", "/quit"} <= set(names)
     assert all(desc for _, desc in chat_input.SLASH_COMMANDS)
 
 

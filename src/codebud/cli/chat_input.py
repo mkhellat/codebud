@@ -46,6 +46,8 @@ SLASH_COMMANDS = [
     ("/models", "list downloaded models, marking the active one"),
     ("/plan", "re-show the last plan (if any)"),
     ("/output", "show the full stdout of the last executed step (untruncated)"),
+    ("/exit", "end the session (so do /quit, quit, exit, q and Ctrl-D)"),
+    ("/quit", "end the session, like /exit"),
 ]
 
 
@@ -53,7 +55,6 @@ def help_text() -> str:
     """Return the /help listing built from SLASH_COMMANDS."""
     lines = ["Slash commands (type /cmd and press Enter):"]
     lines += [f"  {name:<10} — {desc}" for name, desc in SLASH_COMMANDS]
-    lines.append("  quit / exit / q — end the session")
     return "\n".join(lines) + "\n"
 
 

@@ -311,8 +311,8 @@ plan is approved and asks only before powerful commands and web searches,
 @code{full-auto} asks nothing, and @code{plan} never runs anything
 (@pxref{Agent Modes}).
 
-To end the session, type @samp{quit}, @samp{exit} or @samp{q}, or press
-@kbd{Ctrl-D}.  An empty line (@key{RET} alone) just shows the prompt again.
+To end the session, type @samp{quit}, @samp{exit}, @samp{q},
+@code{/exit} or @code{/quit}, or press @kbd{Ctrl-D}.  An empty line (@key{RET} alone) just shows the prompt again.
 
 On a terminal, a dim horizontal rule is drawn across the full width
 before each @samp{[@var{n}] You:} prompt, so turns are easy to tell
@@ -404,6 +404,7 @@ starts over.
 @item @code{/models} @tab List downloaded models, marking the active one.
 @item @code{/plan} @tab Re-display the last received plan.
 @item @code{/output} @tab Show the full stdout of the last executed step.
+@item @code{/exit}, @code{/quit} @tab End the session, like @samp{quit}.
 @end multitable
 
 @anchor{Agent Modes}
