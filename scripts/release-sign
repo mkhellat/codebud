@@ -1,0 +1,37 @@
+#!/bin/sh
+# release-sign — sign a release tarball, GNU style.
+#
+#   scripts/release-sign TARBALL [KEY]
+#
+# Writes TARBALL.sig (a detached OpenPGP signature) and TARBALL.sha256
+# next to TARBALL, then verifies the signature.  KEY defaults to git's
+# user.signingkey, the key that signs the release tag.  gpg asks for the
+# key's passphrase.
+#
+# `make release-sign` runs it on the tarball `make distcheck` built.
+
+tarball=${1:?usage: release-sign TARBALL [KEY]}
+key=${2:-$(git config --get user.signingkey)}
+
+if [ ! -f "$tarball" ]; then
+    echo "release-sign: $tarball not found (run make distcheck first)" >&2
+    exit 1
+fi
+if [ -z "$key" ]; then
+    echo "release-sign: no signing key: pass one, or set it with" >&2
+    echo "  git config user.signingkey <fingerprint>" >&2
+    exit 1
+fi
+
+dir=$(dirname "$tarball")
+name=$(basename "$tarball")
+
+rm -f "$tarball.sig" "$tarball.sha256"
+gpg --local-user "$key" --detach-sign --output "$tarball.sig" "$tarball" || exit 1
+(cd "$dir" && sha256sum "$name" >"$name.sha256") || exit 1
+
+if ! gpg --verify "$tarball.sig" "$tarball" 2>/dev/null; then
+    echo "release-sign: the new signature does not verify" >&2
+    exit 1
+fi
+echo "release-sign: wrote $tarball.sig and $tarball.sha256"

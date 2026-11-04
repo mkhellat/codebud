@@ -73,6 +73,7 @@ help:
 	  '  make coverage         tests with branch coverage -> htmlcov/' \
 	  '  make dist-python      Python sdist and wheel -> dist/' \
 	  '  make release-check    is this checkout ready to release? (read-only)' \
+	  '  make release-sign     sign the distcheck tarball (.sig, .sha256)' \
 	  '  make install-link     link .venv/bin/codebud into LINKDIR ($(LINKDIR))' \
 	  '  make uninstall-link   remove that link' \
 	  '  make clean-dev        remove bytecode, tool caches, egg-info (keeps .venv/)' \
@@ -106,6 +107,10 @@ dist-python:
 release-check:
 	$(SHELL) "$(srcdir)/scripts/release-check" "$(abs_srcdir)" "$(PYTHON)" "$(MAKE)"
 
+# Signs the tarball from `make distcheck` with git's user.signingkey.
+release-sign:
+	$(SHELL) "$(srcdir)/scripts/release-sign" "$(DIST_ARCHIVES)"
+
 install-link:
 	$(MKDIR_P) "$(LINKDIR)"
 	ln -sf "$(abs_builddir)/$(VENV)/bin/codebud" "$(LINKDIR)/codebud"
@@ -123,7 +128,8 @@ clean-local:
 # the developer caches. Afterwards run ./bootstrap again. .venv/ is kept;
 # `make clean-venv` removes it.
 
-MAINTAINERCLEANFILES = Makefile.in aclocal.m4 configure configure~ $(DIST_ARCHIVES)
+MAINTAINERCLEANFILES = Makefile.in aclocal.m4 configure configure~ $(DIST_ARCHIVES) \
+                       $(DIST_ARCHIVES:=.sig) $(DIST_ARCHIVES:=.sha256)
 
 maintainer-clean-local: clean-dev
 	-rm -rf build-aux autom4te.cache
@@ -139,5 +145,5 @@ clean-dev:
 	rm -rf .pytest_cache .ruff_cache src/*.egg-info
 	find . -path ./$(VENV) -prune -o -name __pycache__ -type d -prune -exec rm -rf {} +
 
-.PHONY: help install-dev lint format coverage dist-python release-check install-link uninstall-link \
+.PHONY: help install-dev lint format coverage dist-python release-check release-sign install-link uninstall-link \
         clean-dev clean-venv

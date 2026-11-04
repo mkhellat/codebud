@@ -27,6 +27,8 @@ Makefile.in
 /config.status
 /codebud
 /codebud-*.tar.gz
+/codebud-*.tar.gz.sig
+/codebud-*.tar.gz.sha256
 docs/version.texi
 docs/stamp-vti
 docs/*.info

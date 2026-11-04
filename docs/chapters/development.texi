@@ -613,7 +613,24 @@ each account with two-factor authentication):
 @end multitable
 
 @noindent
-The project name is claimed by its first upload.  In the GitHub
+The project name is claimed by its first upload.
+
+Release tags and the GNU tarball are signed with an OpenPGP key kept for
+Codebud alone.  Once, the maintainer creates it and tells Git to use it:
+
+@example
+gpg --quick-gen-key "Codebud release signing <@var{address}>" ed25519 sign 2y
+gpg --list-secret-keys --keyid-format long       @r{# note the fingerprint}
+git config user.signingkey @var{fingerprint}     @r{# in this checkout only}
+gpg --armor --export @var{fingerprint} > codebud-signing-key.asc
+@end example
+
+@noindent
+and publishes the public key (@file{codebud-signing-key.asc}) where users
+can check it against the fingerprint: the key's settings on GitHub and
+Codeberg, and @uref{https://keys.openpgp.org}.  The private key and its
+passphrase never leave the maintainer's machine, and the expiry date is
+extended (@samp{gpg --quick-set-expire}) before it runs out.  In the GitHub
 repository settings, the @code{pypi} environment can be limited to
 @samp{v*} tags and made to wait for the maintainer's approval.
 
@@ -633,14 +650,29 @@ install from there into a fresh virtual environment:
 pip install --index-url https://test.pypi.org/simple/ \
     --extra-index-url https://pypi.org/simple/ codebud
 @end example
-@item Tag and push the tag to both remotes:
+@item Sign the release tarball that @command{make release-check} built
+(it ran @command{make distcheck}):
 @example
-git tag -a v0.1.0 -m "codebud 0.1.0"
+make release-sign      @r{# codebud-0.1.0.tar.gz.sig and .sha256}
+@end example
+@item Tag with a signature and push the tag to both remotes:
+@example
+git tag -s v0.1.0 -m "codebud 0.1.0"
+git tag -v v0.1.0
 git push github v0.1.0
 git push origin v0.1.0
 @end example
 @item Watch the @samp{Release} workflow; when it is done, the release is
 on PyPI.
+@item Make the GitHub release, with the @file{NEWS} entry as its notes
+and the tarball, signature and checksum attached:
+@example
+gh release create v0.1.0 --title "codebud 0.1.0" --notes-file @var{notes} \
+    codebud-0.1.0.tar.gz codebud-0.1.0.tar.gz.sig codebud-0.1.0.tar.gz.sha256
+@end example
+@noindent
+and the same on Codeberg (@samp{Releases} @result{} @samp{New release},
+for the existing tag).
 @item Start the next version: add a heading
 @samp{* Noteworthy changes in release @var{next} (unreleased)} on top of
 @file{NEWS}, with @var{next} a provisional guess.  @file{pyproject.toml}
