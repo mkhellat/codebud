@@ -10,6 +10,8 @@ of `make install` and the release tarball.
 import re
 from pathlib import Path
 
+import pytest
+
 ROOT = Path(__file__).resolve().parent.parent
 
 
@@ -54,13 +56,42 @@ def test_configure_takes_its_version_from_pyproject():
     assert re.search(r"AC_INIT\(\[codebud\],\s*m4_esyscmd_s", configure_ac)
 
 
+def _news_version_ok(news: str, version: str) -> bool:
+    """True if NEWS fits the version in pyproject.toml: its newest entry is
+    that version, or (after a release) an (unreleased) entry for the next
+    one sits on top of the released version's entry."""
+    entries = re.findall(r"(?m)^\* Noteworthy changes in release (\S+) (.*)$", news)
+    if not entries:
+        return False
+    (top, rest), *older = entries
+    if top == version:
+        return True
+    return "unreleased" in rest and bool(older) and older[0][0] == version
+
+
 def test_news_top_entry_matches_the_version():
     """NEWS's newest entry is the version in pyproject.toml (Versioning in
     the manual): a release cannot ship with its changes filed elsewhere."""
     version = re.search(r'(?m)^version = "([^"]+)"', (ROOT / "pyproject.toml").read_text())
-    top = re.search(r"(?m)^\* Noteworthy changes in release (\S+)", (ROOT / "NEWS").read_text())
-    assert version and top
-    assert top.group(1) == version.group(1)
+    assert version
+    assert _news_version_ok((ROOT / "NEWS").read_text(), version.group(1))
+
+
+@pytest.mark.parametrize(
+    ("headings", "ok"),
+    [
+        (["0.1.0 (unreleased) [alpha]"], True),
+        (["0.1.0 (2026-11-20) [alpha]"], True),
+        (["0.1.1 (unreleased) [alpha]", "0.1.0 (2026-11-20) [alpha]"], True),
+        (["0.2.0 (2026-12-01) [alpha]", "0.1.0 (2026-11-20) [alpha]"], False),
+        (["0.1.1 (unreleased) [alpha]", "0.0.9 (2026-10-01) [alpha]"], False),
+        (["0.1.1 (unreleased) [alpha]"], False),
+        ([], False),
+    ],
+)
+def test_news_version_rule(headings, ok):
+    news = "".join(f"* Noteworthy changes in release {h}\n\ntext\n\n" for h in headings)
+    assert _news_version_ok(news, "0.1.0") is ok
 
 
 def test_readme_links_are_absolute():
