@@ -582,3 +582,70 @@ It needs the development tools (@command{ruff}, @code{build},
 @samp{scripts/release-check --quick @var{srcdir} @var{python}} runs only
 the fast checks (everything before @command{make distcheck}).
 
+@subheading Publishing a release
+@cindex publishing a release
+@cindex PyPI, publishing to
+@cindex trusted publishing
+
+Releases reach PyPI through @dfn{trusted publishing}: the GitHub Actions
+workflow @file{.github/workflows/release.yml} proves to PyPI who it is
+with a short-lived OpenID Connect token, so no API token is stored
+anywhere, and PyPI attaches signed attestations to every file.  Pushing
+a tag @samp{v@var{version}} builds the sdist and wheel once, publishes
+them to TestPyPI and, only if that succeeded, to PyPI.  The workflow
+stops when the tag does not match @code{version} in
+@file{pyproject.toml}.  Starting the workflow by hand (@samp{Run
+workflow} on its Actions page, or @samp{gh workflow run release.yml})
+publishes to TestPyPI only: a rehearsal.
+
+Once, before the first release, the maintainer registers the workflow
+on both sites (@samp{Publishing} @result{} @samp{Add a new pending
+publisher} on @uref{https://pypi.org} and @uref{https://test.pypi.org},
+each account with two-factor authentication):
+
+@multitable @columnfractions .35 .65
+@headitem Field @tab Value
+@item PyPI project name @tab @code{codebud}
+@item Owner @tab @code{mkhellat}
+@item Repository name @tab @code{codebud}
+@item Workflow name @tab @code{release.yml}
+@item Environment name @tab @code{pypi} (on PyPI), @code{testpypi} (on TestPyPI)
+@end multitable
+
+@noindent
+The project name is claimed by its first upload.  In the GitHub
+repository settings, the @code{pypi} environment can be limited to
+@samp{v*} tags and made to wait for the maintainer's approval.
+
+To cut a release:
+
+@enumerate
+@item Decide the version from @file{NEWS} (the largest kind of change
+since the last release, @pxref{Versioning}), set it in
+@file{pyproject.toml} and in the newest @file{NEWS} heading, and replace
+@samp{(unreleased)} there with today's date, e.g.
+@samp{* Noteworthy changes in release 0.1.0 (2026-11-20) [alpha]};
+commit and push.
+@item Run @command{make release-check} until it passes.
+@item Optionally rehearse on TestPyPI (run the workflow by hand), then
+install from there into a fresh virtual environment:
+@example
+pip install --index-url https://test.pypi.org/simple/ \
+    --extra-index-url https://pypi.org/simple/ codebud
+@end example
+@item Tag and push the tag to both remotes:
+@example
+git tag -a v0.1.0 -m "codebud 0.1.0"
+git push github v0.1.0
+git push origin v0.1.0
+@end example
+@item Watch the @samp{Release} workflow; when it is done, the release is
+on PyPI.
+@item Start the next version: add a heading
+@samp{* Noteworthy changes in release @var{next} (unreleased)} on top of
+@file{NEWS}, with @var{next} a provisional guess.  @file{pyproject.toml}
+keeps the released version until the next release is cut; the test
+suite accepts exactly this, an unreleased entry above the released
+version's own.
+@end enumerate
+
