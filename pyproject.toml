@@ -62,7 +62,9 @@ dev = [
 codebud = "codebud.cli.main:main"
 
 [project.urls]
+Homepage     = "https://github.com/mkhellat/codebud"
 Repository   = "https://github.com/mkhellat/codebud"
+Codeberg     = "https://codeberg.org/mkhellat/codebud"
 Documentation = "https://github.com/mkhellat/codebud/tree/main/docs"
 "Bug Tracker" = "https://github.com/mkhellat/codebud/issues"
 Changelog    = "https://github.com/mkhellat/codebud/blob/main/NEWS"

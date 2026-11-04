@@ -437,6 +437,12 @@ per tested step.  No @code{Co-Authored-By} trailer.
 @item Tests first
 Write at least one test before adding a new feature.  All tests must pass
 without a live Ollama server.
+
+@item Continuous integration
+GitHub Actions (@file{.github/workflows/ci.yml}) runs @command{make check}
+on Ubuntu and macOS (oldest and newest supported Python) and on Fedora for
+every push and pull request.  The Codeberg repository is a mirror and runs
+no CI of its own.
 @end table
 
 

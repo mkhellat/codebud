@@ -1,7 +1,7 @@
 # Codebud — Privacy-First, Local Coding Agent
 
 [![CI](https://github.com/mkhellat/codebud/actions/workflows/ci.yml/badge.svg)](https://github.com/mkhellat/codebud/actions/workflows/ci.yml)
-[![License: GPL-3.0-or-later](https://img.shields.io/badge/License-GPL--3.0--or--later-blue.svg)](COPYING)
+[![License: GPL-3.0-or-later](https://img.shields.io/badge/License-GPL--3.0--or--later-blue.svg)](https://github.com/mkhellat/codebud/blob/main/COPYING)
 [![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue.svg)](https://www.python.org/downloads/)
 [![Local / Ollama](https://img.shields.io/badge/backend-local%20Ollama-brightgreen.svg)](#quick-start)
 [![Codeberg](https://img.shields.io/badge/Codeberg-mirror-2185D0.svg)](https://codeberg.org/mkhellat/codebud)
@@ -16,7 +16,7 @@ manual's Privacy chapter).
 Selected for the [XERJ Corpus Hub](https://hub.xerj.org/corpus/mkhellat--codebud)
 as reference memory for coding agents (approach-only under GPL-3.0).
 
-**For coding agents:** read [`llms.txt`](llms.txt) (install, privacy dial, modes,
+**For coding agents:** read [`llms.txt`](https://github.com/mkhellat/codebud/blob/main/llms.txt) (install, privacy dial, modes,
 when data can leave the machine). Hand them:
 `Install codebud (docs: https://raw.githubusercontent.com/mkhellat/codebud/main/llms.txt), run doctor, index this project if useful, then run the user's task locally.`
 
@@ -117,10 +117,14 @@ make && make check
 make lint | format | coverage | dist-python | install-link | clean-dev
 ```
 
+Continuous integration (GitHub Actions: Ubuntu, macOS, Fedora) runs on
+every push to GitHub; the [Codeberg repository](https://codeberg.org/mkhellat/codebud)
+is a mirror and runs no CI of its own.
+
 ## Documentation
 
 The full manual lives in `docs/` and is written in GNU Texinfo. What
-changed in each release is in [NEWS](NEWS); versions follow
+changed in each release is in [NEWS](https://github.com/mkhellat/codebud/blob/main/NEWS); versions follow
 [Semantic Versioning](https://semver.org) (0.x while the interface may still
 change).
 
@@ -218,4 +222,4 @@ the data directory and the policy files in effect.
 Codebud is free software: you can redistribute it and/or modify it under the
 terms of the GNU General Public License as published by the Free Software
 Foundation, either version 3 of the License, or (at your option) any later
-version (GPL-3.0-or-later). See [COPYING](COPYING) for the full text.
+version (GPL-3.0-or-later). See [COPYING](https://github.com/mkhellat/codebud/blob/main/COPYING) for the full text.

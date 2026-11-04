@@ -61,3 +61,10 @@ def test_news_top_entry_matches_the_version():
     top = re.search(r"(?m)^\* Noteworthy changes in release (\S+)", (ROOT / "NEWS").read_text())
     assert version and top
     assert top.group(1) == version.group(1)
+
+
+def test_readme_links_are_absolute():
+    """PyPI renders README.md as the project page, where a relative link
+    such as (COPYING) resolves against pypi.org and breaks."""
+    relative = re.findall(r"\]\((?!https?://|#)([^)]+)\)", (ROOT / "README.md").read_text())
+    assert relative == []
