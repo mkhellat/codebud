@@ -50,6 +50,14 @@ def test_every_manual_chapter_is_listed():
     assert _am_list(docs / "Makefile.am", "codebud_TEXINFOS") == on_disk
 
 
+def test_every_test_file_is_in_the_manual():
+    """Development > Test Suite lists each test file with what it covers."""
+    manual = (ROOT / "docs" / "chapters" / "development.texi").read_text()
+    listed = set(re.findall(r"\b(test_[a-z0-9_]+\.py)\b", manual))
+    on_disk = {p.name for p in (ROOT / "tests").glob("test_*.py")}
+    assert on_disk - listed == set()
+
+
 def test_configure_takes_its_version_from_pyproject():
     configure_ac = (ROOT / "configure.ac").read_text()
     assert "pyproject.toml" in configure_ac

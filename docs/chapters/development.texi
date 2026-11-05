@@ -130,8 +130,14 @@ tests/
 │                                replace/remove, keyword search
 ├── test_redact.py               secret masking: formats, contexts, no
 │                                false positives; sessions and history
+├── test_release_check.py        make release-check --quick: git state,
+│                                tag, NEWS date, lint, every failure listed
+├── test_release_sign.py         make release-sign: .sig and .sha256 with a
+│                                throwaway key in a private GNUPGHOME
 ├── test_remote_ollama.py        remote Ollama: https notice, plain http
 │                                refused unless allowed
+├── test_safety_awk_sed.py       awk/sed forms that run programs or write
+│                                files are refused; ordinary use is not
 ├── test_safety_executor_patcher.py  safety policy, executor, patching
 ├── test_safety_policy.py        whole-word matching, refused arguments,
 │                                powerful commands
