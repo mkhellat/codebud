@@ -584,6 +584,7 @@ src/codebud/                   the package
 ├── fsutil.py          atomic_write_text/bytes(), private_dir(), create_private()
 ├── gitsafe.py         run git without the repository running programs
 ├── crypto.py          age encryption at rest: passphrase-sealed key
+├── integrity.py       pinned manifest: model digests, binary hashes
 ├── encrypt_existing.py  encrypt older plaintext; originals backed up
 ├── llm_stub.py        call_llm() (Ollama / OpenAI)
 ├── skill.py           codebud skill show/install

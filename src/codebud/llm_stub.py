@@ -433,6 +433,23 @@ def _ollama_available() -> bool:
         return False
 
 
+def model_digests() -> dict[str, str] | None:
+    """Map each downloaded model to its digest (integrity.py), or None
+    if Ollama cannot be reached."""
+    try:
+        r = requests.get(
+            f"{ollama_base()}/api/tags", timeout=5, proxies=ollama_proxies(ollama_base())
+        )
+        r.raise_for_status()
+        return {
+            m["name"]: m["digest"]
+            for m in r.json().get("models", [])
+            if isinstance(m.get("name"), str) and isinstance(m.get("digest"), str)
+        }
+    except Exception:
+        return None
+
+
 def list_models() -> list[str]:
     """Return the names of models currently downloaded in Ollama, or [] on failure."""
     try:

@@ -27,6 +27,7 @@ nobase_python_PYTHON = \
 	codebud/executor.py \
 	codebud/fsutil.py \
 	codebud/gitsafe.py \
+	codebud/integrity.py \
 	codebud/isolation.py \
 	codebud/llm_stub.py \
 	codebud/memory.py \

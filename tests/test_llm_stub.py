@@ -128,6 +128,26 @@ def test_list_models_returns_names(monkeypatch):
     assert llm_stub.list_models() == ["a", "b"]
 
 
+def test_model_digests_maps_names_to_digests(monkeypatch):
+    class FakeResponse:
+        def raise_for_status(self):
+            pass
+
+        def json(self):
+            return {"models": [{"name": "a:latest", "digest": "d1"}, {"name": "b"}]}
+
+    monkeypatch.setattr(llm_stub.requests, "get", lambda *a, **kw: FakeResponse())
+    assert llm_stub.model_digests() == {"a:latest": "d1"}
+
+
+def test_model_digests_none_when_ollama_is_unreachable(monkeypatch):
+    def boom(*a, **kw):
+        raise ConnectionError("no server")
+
+    monkeypatch.setattr(llm_stub.requests, "get", boom)
+    assert llm_stub.model_digests() is None
+
+
 def test_list_models_empty_on_failure(monkeypatch):
     def boom(*a, **kw):
         raise ConnectionError("no server")
