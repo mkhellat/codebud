@@ -9,6 +9,7 @@ import hashlib
 import os
 import shutil
 import subprocess
+import tempfile
 from pathlib import Path
 
 import pytest
@@ -23,18 +24,26 @@ pytestmark = pytest.mark.skipif(
 
 
 @pytest.fixture
-def gnupg(tmp_path):
-    """A private GNUPGHOME with one passphrase-less test key; yields its env."""
-    home = tmp_path / "gnupg"
-    home.mkdir(mode=0o700)
-    env = {**os.environ, "GNUPGHOME": str(home)}
-    subprocess.run(
-        ["gpg", "--batch", "--passphrase", "", "--quick-gen-key",
-         "Codebud Test <test@example.invalid>", "ed25519", "sign", "never"],
-        env=env, check=True, capture_output=True,
-    )  # fmt: skip
-    yield env
-    subprocess.run(["gpgconf", "--kill", "all"], env=env, capture_output=True)
+def gnupg():
+    """A private GNUPGHOME with one passphrase-less test key; yields its env.
+
+    The home is a short directory under /tmp, not pytest's tmp_path: gpg-agent
+    puts its socket in GNUPGHOME, and on macOS (no /run/user to fall back to)
+    tmp_path is too long for a Unix socket path (104 bytes there).
+    """
+    home = tempfile.mkdtemp(prefix="cb-gpg-", dir="/tmp" if os.path.isdir("/tmp") else None)
+    env = {**os.environ, "GNUPGHOME": home}
+    try:
+        made = subprocess.run(
+            ["gpg", "--batch", "--passphrase", "", "--quick-gen-key",
+             "Codebud Test <test@example.invalid>", "ed25519", "sign", "never"],
+            env=env, capture_output=True, text=True,
+        )  # fmt: skip
+        assert made.returncode == 0, f"gpg could not make a test key:\n{made.stderr}"
+        yield env
+    finally:
+        subprocess.run(["gpgconf", "--kill", "all"], env=env, capture_output=True)
+        shutil.rmtree(home, ignore_errors=True)
 
 
 def _sign(tarball: Path, env: dict, *key: str) -> subprocess.CompletedProcess:
