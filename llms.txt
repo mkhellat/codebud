@@ -1,106 +1,12 @@
-# Codebud
+# codebud
 
-> Privacy-first, local coding agent. Plans and runs multi-step coding tasks
-> (read/write/patch files, allow-listed commands) with a model that runs in
-> Ollama on your machine. By default no cloud model, no telemetry, and no
-> data leaves the host.
+> A privacy-first, local coding agent that turns natural-language requests into executable plans using locally-running LLMs (Ollama + Qwen2.5-Coder). No API keys, no telemetry; by default no data leaves your machine.
 
-- GitHub: https://github.com/mkhellat/codebud
-- Codeberg: https://codeberg.org/mkhellat/codebud
-- Licence: GPL-3.0-or-later (see COPYING)
-- Manual: Texinfo under docs/ (Info after `make install`; HTML site planned)
-- Skill for other agents: `codebud skill show` / `codebud skill install --for claude|openclaw`
-- XERJ Corpus Hub (approach-only): https://hub.xerj.org/corpus/mkhellat--codebud
+## Core Resources
 
-When this file and a running binary disagree, the binary wins:
-`codebud --help`, `codebud doctor`, and the Privacy chapter of the manual.
+- [GitHub Repository](https://github.com/mkhellat/codebud): Source code, documentation, and issue tracker.
 
-## Install (git checkout)
+## AI Agent & LLM Indexing
 
-```sh
-git clone https://github.com/mkhellat/codebud.git && cd codebud
-./bootstrap && ./configure && make && make check
-sudo make install   # or: ./configure --prefix=$HOME/.local && make install
-```
-
-Needs Python ≥ 3.10 with `requests` and `prompt_toolkit` (and `tomli` on 3.10).
-Optional: `numpy` for project search (`pip install '.[rag]'`), `pyrage` for
-age encryption at rest (`pip install '.[crypto]'`), `bubblewrap` for
-isolated command steps.
-
-## Run
-
-```sh
-ollama serve &   # if not already running
-ollama pull qwen2.5-coder:3b-instruct-q4_K_M
-export OLLAMA_MODEL=qwen2.5-coder:3b-instruct-q4_K_M
-codebud doctor
-codebud run "your task"
-codebud chat
-```
-
-From another agent, prefer:
-
-```sh
-codebud --no-progress run "…"
-codebud --no-progress run --yes "…"   # only after the user agrees to unattended powerful steps
-```
-
-## Privacy (honest defaults)
-
-- **Default:** local Ollama only; sessions/history under XDG dirs with
-  owner-only modes; secret masking before store; command steps can use
-  bubblewrap (no network, project-scoped writes, secrets hidden).
-- **Privacy dial:** `--privacy locked|private|trusted` (default `private`).
-- **Opt-in egress:** remote `OLLAMA_BASE_URL` (plain http to non-loopback
-  refused unless `CODEBUD_ALLOW_REMOTE_HTTP`); explicit OpenAI backend
-  (never a silent fallback); web-search tool (confirmed except documented
-  full-auto/trusted cases).
-- **Encryption at rest (optional):** `codebud key init` then `encrypt = true`
-  in config; sessions, history, and project indexes.
-- **Confinement:** file steps write only inside the project (not `.git/`,
-  `.codebud/`) and never read secret files; catastrophic commands are
-  refused whatever the allow-list says.
-- **Project policy:** a repo's `.codebud/` can narrow the allow-list, but
-  widens it only after the user runs `codebud trust` (hash-bound).
-
-Run `codebud doctor` and read the Outbound / Encryption lines before claiming
-a deployment is air-gapped.
-
-## Modes
-
-Chat/run approval axis (not the same as privacy):
-
-| Mode | Behaviour |
-|---|---|
-| `ask` (default) | Approve plan and each step |
-| `auto` | Approve plan once; powerful steps still ask |
-| `full-auto` | No prompts; allow-list and refused-args still enforced |
-| `plan` | Never execute |
-| `edit` | File tools only (no shell commands) |
-
-## Project search (optional)
-
-```sh
-pip install '.[rag]'
-ollama pull all-minilm
-codebud index
-codebud chat    # /rag /sources /index
-```
-
-Index stays local. Prefer a 7B coder model for edit plans when quality matters.
-
-## What not to do
-
-- Do not invent cloud APIs for codebud; the product is local-first.
-- Do not bypass SafetyEngine allow-lists or privacy `locked` via hooks or env.
-- Do not copy GPL-licensed codebud sources into Apache/MIT projects; hub and
-  docs mark approach-only reuse where that applies.
-- Do not commit secrets into the project tree; indexes skip many secret paths
-  but are not a substitute for hygiene.
-
-## Agent one-liner
-
-Install codebud (docs: this file), run `codebud doctor`, `cd` to the user's
-project, optionally `codebud index`, then `codebud --no-progress run "…"`
-(or `chat`) and return codebud's output with citations to paths it touched.
+- Structured following the standard /llms.txt specification for AI search engines and coding assistants.
+- Validated via [AccessGuard AI-Readiness Suite](https://ronanchnlps-bit.github.io/).
