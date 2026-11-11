@@ -144,6 +144,7 @@ def main():
         if args.subcommand in _STORES_DATA:
             crypto.check_ready()  # encryption on but unusable: refuse, never store plaintext
         if args.subcommand in ("run", "plan", "chat"):
+            common.check_integrity(args)  # before anything runs or is sent
             common.warn_if_own_code_in_project()
             common.review_project_policy()
             common.unlock_project_index()

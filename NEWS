@@ -34,8 +34,10 @@ a safety policy you can read and change.
   and deleting it lists what goes and asks first.
 
   codebud integrity pin records the model digests and the SHA-256 of
-  every allow-listed program; codebud integrity verify reports anything
-  that changed since.
+  every allow-listed program; while that manifest exists, run, plan and
+  chat refuse to start, and /model to switch, if anything changed
+  (codebud integrity verify lists it).  A profile can require a manifest
+  (integrity = true).
 
   Optional encryption at rest with age: codebud key init, then
   encrypt = true; sessions, step history and project indexes.  Older

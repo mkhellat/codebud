@@ -45,6 +45,23 @@ from .tools.tool_registry import ToolRegistry
 _SUMMARY_LIMIT = 80
 
 
+def _integrity_refusal(model: str) -> str | None:
+    """Why switching to ``model`` is refused while an integrity manifest
+    exists (not pinned, digest changed), or None."""
+    from . import integrity, llm_stub
+
+    try:
+        manifest = integrity.load()
+    except integrity.IntegrityError as exc:
+        return str(exc)
+    if manifest is None:
+        return None
+    problems = integrity.check_models(manifest, [model], llm_stub.model_digests() or {})
+    if not problems:
+        return None
+    return f"Not switching: {problems[0]} (codebud integrity pin --model {model})"
+
+
 def step_summary(step: dict[str, Any]) -> str:
     """``tool(target)`` for a plan step, from its arguments: the path of a
     file tool, a patch's target file, a command line, a search query."""
@@ -243,6 +260,9 @@ class AgentCore:
             return False, "Could not reach Ollama to verify available models."
         if model not in available:
             return False, f"Model '{model}' is not downloaded. Run: ollama pull {model}"
+        refusal = _integrity_refusal(model)
+        if refusal:
+            return False, refusal
 
         previous = os.environ.get("OLLAMA_MODEL")
         os.environ["OLLAMA_MODEL"] = model

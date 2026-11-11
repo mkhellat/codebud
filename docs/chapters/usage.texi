@@ -1062,6 +1062,8 @@ any difference, so it can guard a script.
 List what is pinned, and when.
 @end table
 
+While a manifest exists, @command{run}, @command{plan} and @command{chat}
+check it first and refuse on any difference (@pxref{Integrity Checks}).
 After an update you made yourself (@command{ollama pull}, a system
 upgrade), pin again.  The manifest is plain JSON (mode 0600), so it can
 be read and compared; a manifest that is damaged is an error, never

@@ -183,6 +183,16 @@ def check_binary(manifest: Manifest, program: str, path: str | None = None) -> s
     return None
 
 
+def start_problems(manifest: Manifest, models, digests: dict[str, str] | None) -> list[str]:
+    """Problems that stop a run from starting: the ``models`` it will use
+    (``digests`` None: Ollama could not be asked) and every pinned binary."""
+    if digests is None:
+        problems = ["cannot reach Ollama to check the model digests"]
+    else:
+        problems = check_models(manifest, models, digests)
+    return problems + check_binaries(manifest)
+
+
 def check_binaries(manifest: Manifest, path: str | None = None) -> list[str]:
     """Problems with every pinned binary."""
     problems = (check_binary(manifest, name, path) for name in sorted(manifest.binaries))

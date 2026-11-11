@@ -79,6 +79,8 @@ tests/
 │                                changed model/binary, PATH, symlinks
 ├── test_integrity_cli.py        integrity pin/verify/show: what is pinned,
 │                                refusals, --yes, mismatches reported
+├── test_integrity_enforced.py   run/plan/chat refused on a changed model or
+│                                binary, --model, --no-rag, profile, /model
 ├── test_isolation.py            bubblewrap isolation (live where available),
 │                                network steps, no-isolation fallbacks
 ├── test_key_cli.py             codebud key init/passwd/status, passphrase

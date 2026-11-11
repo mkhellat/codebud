@@ -441,6 +441,7 @@ privacy = "locked"            # locked, private, trusted
 policy = "review-policy"      # directory, relative to this file
 prompt = "Never modify files under tests/."
 encrypt = true                # turn encryption at rest on
+integrity = true              # refuse to start without a pinned manifest
 @end example
 
 @noindent
@@ -449,7 +450,10 @@ encrypt = true                # turn encryption at rest on
 project's, yours and the shipped ones.  @code{prompt} is added to every
 planner prompt.  @code{encrypt = true} turns encryption at rest on while
 the profile is active, whatever the configuration says; a profile cannot
-turn it off (@pxref{Encryption at Rest}).  A profile file with a mistake --- an unknown key, a mode
+turn it off (@pxref{Encryption at Rest}).  @code{integrity = true}
+refuses to start @command{run}, @command{plan} or @command{chat} while
+nothing is pinned; once something is, the manifest is checked with any
+profile (@pxref{Integrity Checks}).  A profile file with a mistake --- an unknown key, a mode
 or level that does not exist, a missing policy directory --- is refused
 with a message rather than half applied.  A project cannot define or
 choose a profile, since a profile can lower the privacy level.
