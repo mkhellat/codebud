@@ -194,6 +194,10 @@ output to execution.
 @item @code{sudo pacman -Syu} @tab @kbd{rejected} @tab @code{sudo} is in neither list
 @end multitable
 
+@noindent
+While an integrity manifest exists, a step that passes these checks is
+checked once more right before it runs (@pxref{Integrity Checks}).
+
 
 @node Integrity Checks
 @section Integrity Checks
@@ -223,7 +227,13 @@ resolves to another file on @env{PATH}.
 
 @noindent
 Switching models in @command{chat} (@code{/model}) is refused the same
-way.  A manifest that cannot be read is an error, never a reason to skip
+way.  Each @code{command} step is checked again right before it runs:
+the program it executes, the one a wrapper such as @command{timeout}
+runs, and the isolation tool must all be pinned and unchanged, or the
+step is refused and nothing runs --- including a program that is on the
+allow-list but was added after the last pin.  A program given as a
+relative path, such as @command{./configure}, is a file of the project,
+which the manifest does not cover; the allow-list alone decides those.  A manifest that cannot be read is an error, never a reason to skip
 the check, and a profile with @code{integrity = true} refuses to start
 while nothing is pinned (@pxref{Profiles}).
 

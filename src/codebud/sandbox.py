@@ -101,6 +101,34 @@ def step_environment(network: bool = False) -> dict[str, str]:
     return {k: v for k, v in os.environ.items() if k not in never and _matches(k, allowed)}
 
 
+def _integrity_refusal(words: list[str], argv: list[str]) -> str | None:
+    """While an integrity manifest exists: why this step may not run (a
+    program changed or is not pinned), or None. Checked are the program
+    that is executed (the isolation tool, if any), the step's own program
+    and the one a wrapper such as `timeout` runs. A relative path such as
+    ./configure is a project file, which the manifest does not cover."""
+    from codebud import integrity
+    from codebud.safety import _unwrap
+
+    try:
+        manifest = integrity.load()
+    except integrity.IntegrityError as exc:
+        return f"Refused: {exc}"
+    if manifest is None:
+        return None
+    programs = dict.fromkeys(argv[:1] + words[:1] + _unwrap(words)[:1])
+    for program in programs:
+        if "/" in program and not os.path.isabs(program):
+            continue
+        problem = integrity.check_binary(manifest, program)
+        if problem:
+            return (
+                f"Refused by the integrity check: {problem}. "
+                "If the change is yours, pin again: codebud integrity pin"
+            )
+    return None
+
+
 class Sandbox:
     """
     Safe execution environment for shell commands.
@@ -146,6 +174,9 @@ class Sandbox:
             # The repository's config must not run programs (gitsafe.py).
             words = gitsafe.git_argv(words[1:], cwd=os.getcwd())
         argv, refusal = isolation.prepare(words, network=network)
+        if refusal:
+            return {"stdout": "", "stderr": refusal, "returncode": 1}
+        refusal = _integrity_refusal(words, argv)
         if refusal:
             return {"stdout": "", "stderr": refusal, "returncode": 1}
 

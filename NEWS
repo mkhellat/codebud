@@ -35,8 +35,9 @@ a safety policy you can read and change.
 
   codebud integrity pin records the model digests and the SHA-256 of
   every allow-listed program; while that manifest exists, run, plan and
-  chat refuse to start, and /model to switch, if anything changed
-  (codebud integrity verify lists it).  A profile can require a manifest
+  chat refuse to start, /model to switch and each step to run if
+  anything it uses changed or is not pinned (codebud integrity verify
+  lists it).  A profile can require a manifest
   (integrity = true).
 
   Optional encryption at rest with age: codebud key init, then
