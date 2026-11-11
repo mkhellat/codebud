@@ -63,6 +63,9 @@ codebud --no-progress run --yes "…"   # only after the user agrees to unattend
   refused whatever the allow-list says.
 - **Project policy:** a repo's `.codebud/` can narrow the allow-list, but
   widens it only after the user runs `codebud trust` (hash-bound).
+- **Integrity (optional):** `codebud integrity pin` records model digests
+  and allow-listed program hashes; while pinned, runs and steps are refused
+  on any change (`codebud integrity verify` lists it).
 
 Run `codebud doctor` and read the Outbound / Encryption lines before claiming
 a deployment is air-gapped.

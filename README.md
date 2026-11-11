@@ -72,6 +72,19 @@ codebud doctor                                      # Encryption at rest: on
 codebud key encrypt-existing                        # encrypt older plaintext (backup kept for you)
 ```
 
+## Integrity checks
+
+`codebud integrity pin` records the digest of the model in Ollama and the
+SHA-256 of every program on the allow-list. From then on, `run`, `plan` and
+`chat` refuse to start, and each step refuses to run, if any of them changed
+or is not pinned, so a model or a tool swapped behind codebud's back is
+caught. After an update of your own, check and pin again:
+
+```bash
+codebud integrity pin                               # record what is installed now
+codebud integrity verify                            # what changed since (exit 1 if anything)
+```
+
 ## Project search
 
 Index a project once and every request gets its most relevant code as

@@ -105,6 +105,7 @@ Modes: `ask` approves the plan and each step; `auto` approves the plan once
 | `codebud history`  | Show past executed steps                          |
 | `codebud trust`    | Show what a project's policy adds (trusting it is the user's call) |
 | `codebud key status` | Whether encryption at rest is on, and the key   |
+| `codebud integrity verify` | Whether the model and tools still match what was pinned |
 | `codebud version`  | Show versions                                     |
 
 ## Safety
@@ -122,7 +123,13 @@ A project's `.codebud/` policy can narrow the user's allow-list at once,
 but widens it only after the **user** runs `codebud trust` there (or
 answers yes when asked); without a terminal, widening is ignored with a
 notice. Do not try to work around this: tell the user what the project
-policy would add and let them decide. If the project index is encrypted
+policy would add and let them decide.
+
+While an integrity manifest exists (`codebud integrity pin`), codebud
+refuses to start, or to run a step, if the model or a program it uses
+changed or is not pinned. Do not re-pin to get past this: tell the user
+what `codebud integrity verify` reports; re-pinning is their call, after
+they have checked the change is theirs. If the project index is encrypted
 and no passphrase is available, codebud plans without project context and
 says so.
 
