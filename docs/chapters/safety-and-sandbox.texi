@@ -243,8 +243,9 @@ followed), such as @command{./configure}, is a file of the project,
 which the manifest does not cover; the allow-list alone decides those.
 A relative path that leads out of the project (@file{../tool}) is
 checked like any other program.  A manifest that cannot be read is an error, never a reason to skip
-the check, and a profile with @code{integrity = true} refuses to start
-while nothing is pinned (@pxref{Profiles}).
+the check, and a profile with @code{integrity = true} refuses to start,
+or to be switched to with @code{/profile}, while nothing is pinned
+(@pxref{Profiles}).
 
 When the change is yours --- @command{ollama pull}, a system update ---
 check it with @command{codebud integrity verify}, then pin again.

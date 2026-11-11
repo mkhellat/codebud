@@ -256,3 +256,46 @@ def test_index_status_needs_no_model_check(env, monkeypatch):
     env["digests"]["all-minilm:latest"] = "e2"
     monkeypatch.setattr("codebud.rag.indexer.index_status", lambda root: None)
     assert _index("--status") == 0
+
+
+class _ProfileAgent:
+    def __init__(self):
+        self.mode = None
+
+    def reload_policy(self):
+        pass
+
+    def set_mode(self, mode):
+        self.mode = mode
+
+
+def _strict_profile():
+    from codebud import paths
+
+    profiles_dir = paths.config_dir() / "profiles"
+    profiles_dir.mkdir(parents=True, exist_ok=True)
+    (profiles_dir / "strict.toml").write_text('integrity = true\nmode = "plan"\n')
+
+
+def test_switching_to_a_profile_that_requires_a_manifest_is_refused(env, capsys):
+    from codebud import profiles
+    from codebud.cli import chat
+
+    _strict_profile()
+    state = SimpleNamespace(agent=_ProfileAgent())
+    chat._slash_profile(state, "strict")
+    assert profiles.active().name == "default"
+    assert state.agent.mode is None
+    assert "requires a pinned manifest" in capsys.readouterr().err
+
+
+def test_switching_to_it_with_a_manifest_works(env):
+    from codebud import profiles
+    from codebud.cli import chat
+
+    _strict_profile()
+    _pin(env)
+    state = SimpleNamespace(agent=_ProfileAgent())
+    chat._slash_profile(state, "strict")
+    assert profiles.active().name == "strict"
+    assert state.agent.mode == "plan"

@@ -452,7 +452,7 @@ planner prompt.  @code{encrypt = true} turns encryption at rest on while
 the profile is active, whatever the configuration says; a profile cannot
 turn it off (@pxref{Encryption at Rest}).  @code{integrity = true}
 refuses to start @command{run}, @command{plan} or @command{chat} while
-nothing is pinned; once something is, the manifest is checked with any
+nothing is pinned, and @code{/profile} refuses to switch to it then; once something is, the manifest is checked with any
 profile (@pxref{Integrity Checks}).  A profile file with a mistake --- an unknown key, a mode
 or level that does not exist, a missing policy directory --- is refused
 with a message rather than half applied.  A project cannot define or

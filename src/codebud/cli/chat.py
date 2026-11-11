@@ -214,6 +214,20 @@ def _slash_profile(state: ChatState, rest: str) -> None:
         except profiles.ProfileError as exc:
             print_status(f"{exc}\n")
             return
+        if profile.integrity:
+            from codebud import integrity
+
+            try:
+                pinned = integrity.load() is not None
+            except integrity.IntegrityError as exc:
+                print_status(f"{exc}\n")
+                return
+            if not pinned:
+                print_status(
+                    f"Not switching: profile {profile.name} requires a pinned manifest "
+                    "(codebud integrity pin)\n"
+                )
+                return
         profiles.activate(profile, "/profile", explicit=True)
         state.agent.reload_policy()  # the profile's policy files
         state.agent.set_mode(profile.mode)
