@@ -80,7 +80,8 @@ tests/
 ├── test_integrity_cli.py        integrity pin/verify/show: what is pinned,
 │                                refusals, --yes, mismatches reported
 ├── test_integrity_enforced.py   run/plan/chat refused on a changed model or
-│                                binary, --model, --no-rag, profile, /model
+│                                binary, --model, --no-rag, profile, /model,
+│                                doctor
 ├── test_integrity_steps.py      each step's programs (wrapper, isolation
 │                                tool) checked before running; project files
 ├── test_isolation.py            bubblewrap isolation (live where available),

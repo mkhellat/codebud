@@ -589,6 +589,10 @@ host, DuckDuckGo for web search --- or @samp{Outbound: none}
 @item Encryption at rest: whether it is on, and the key --- a failure
       when it is on without a key or without @code{pyrage}, and a warning
       while @env{CODEBUD_PASSPHRASE} is set (@pxref{Encryption at Rest})
+@item Integrity: what is pinned and whether it all still matches --- a
+      failure on any difference the next run would refuse, on a damaged
+      manifest, or when the profile requires a manifest and nothing is
+      pinned (@pxref{Integrity Checks})
 @item The policy files in effect --- @file{harmless_commands.json},
       @file{powerful_commands.json} and @file{trusted_sequences.json},
       from @file{~/.config/codebud/} or the shipped defaults, and the

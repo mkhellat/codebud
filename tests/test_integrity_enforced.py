@@ -147,3 +147,51 @@ def test_model_switch_to_an_unpinned_model_is_refused(env, monkeypatch):
     import os
 
     assert os.environ["OLLAMA_MODEL"] == "chat:7b"
+
+
+def test_doctor_without_a_manifest_passes_and_says_how_to_pin(env):
+    from codebud.cli import doctor
+
+    passed, label, _hint = doctor.check_integrity()
+    assert passed is True
+    assert "nothing pinned" in label and "codebud integrity pin" in label
+
+
+def test_doctor_with_a_matching_manifest(env):
+    from codebud.cli import doctor
+
+    _pin(env)
+    passed, label, _hint = doctor.check_integrity()
+    assert passed is True
+    assert "2 models, 2 binaries" in label and "all match" in label
+
+
+def test_doctor_fails_on_a_mismatch_the_next_run_would_refuse(env):
+    from codebud.cli import doctor
+
+    _pin(env)
+    (env["bin"] / "git").write_text("#!/bin/sh\necho evil\n")
+    passed, label, hint = doctor.check_integrity()
+    assert passed is False
+    assert "1 mismatch" in label
+    assert "git: contents changed" in hint and "codebud integrity verify" in hint
+
+
+def test_doctor_fails_on_a_damaged_manifest(env):
+    from codebud.cli import doctor
+
+    integrity.manifest_path().parent.mkdir(parents=True, exist_ok=True)
+    integrity.manifest_path().write_text("nope")
+    passed, _label, hint = doctor.check_integrity()
+    assert passed is False
+    assert "integrity.json" in hint
+
+
+def test_doctor_fails_when_the_profile_requires_a_manifest(env, monkeypatch):
+    from codebud import profiles
+    from codebud.cli import doctor
+
+    monkeypatch.setattr(profiles, "_active", profiles.Profile("strict", integrity=True))
+    passed, label, _hint = doctor.check_integrity()
+    assert passed is False
+    assert "profile strict requires" in label
