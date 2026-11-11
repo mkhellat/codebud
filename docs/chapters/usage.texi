@@ -23,6 +23,7 @@ output, and how to get help when something goes wrong.
 * The profiles Subcommand::     List the profiles.
 * The trust Subcommand::        Trust a project's command policy.
 * The key Subcommand::          The encryption key for data at rest.
+* The integrity Subcommand::    Pin the model and tools; check them.
 * The version Subcommand::      Show version information.
 * Progress Output::             Understanding the spinner and token counter.
 * Reading a Plan::              What the plan display means.
@@ -1027,6 +1028,50 @@ Repeat it:
 Created the encryption key in /home/you/.config/codebud/keys
   public key age1@dots{}
 Keep the passphrase safe: without it, data encrypted to this key cannot be recovered by anyone, codebud included.
+@end example
+
+
+@node The integrity Subcommand
+@section The @command{integrity} Subcommand
+@cindex integrity subcommand
+@cindex pinning the model and tools
+
+@command{integrity} records what the model and the programs Codebud runs
+look like now, so that a change to them later is noticed: a model
+replaced under the same name, or a tool on the allow-list swapped for
+another file.
+
+@table @command
+@item codebud integrity pin [--model @var{name}]@dots{} [--command @var{name}]@dots{} [--yes]
+Write the manifest @file{~/.config/codebud/integrity.json}: the Ollama
+digest of the chat model (@env{OLLAMA_MODEL}) and of the embedding model
+(@env{EMBED_MODEL}), and, for every program on the allow-list and the
+isolation tool (@command{bwrap} or @command{unshare}), the file it
+resolves to on @env{PATH} (symbolic links followed) and that file's
+SHA-256.  @option{--model} and @option{--command} pin more.  Programs on
+the allow-list that are not installed are listed and left out.  Refuses
+when Ollama cannot be reached or the chat model is not downloaded, and
+asks before replacing an existing manifest (@option{--yes} does not ask).
+@item codebud integrity verify
+Compare the models and programs as they are now with the manifest and
+list every difference: a model whose digest changed or that is gone, the
+chat model if it is not pinned, a program whose contents changed, that
+now resolves to another file, or that is gone.  Exits with status 1 on
+any difference, so it can guard a script.
+@item codebud integrity show
+List what is pinned, and when.
+@end table
+
+After an update you made yourself (@command{ollama pull}, a system
+upgrade), pin again.  The manifest is plain JSON (mode 0600), so it can
+be read and compared; a manifest that is damaged is an error, never
+skipped.
+
+@example
+$ codebud integrity pin
+Pinned 2 models, 20 binaries in /home/you/.config/codebud/integrity.json
+$ codebud integrity verify
+Everything matches /home/you/.config/codebud/integrity.json (pinned 2026-11-11T09:30:00Z).
 @end example
 
 

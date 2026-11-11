@@ -77,6 +77,8 @@ tests/
 │                                programs (fsmonitor, filters, textconv)
 ├── test_integrity.py            integrity manifest: pin, damaged file,
 │                                changed model/binary, PATH, symlinks
+├── test_integrity_cli.py        integrity pin/verify/show: what is pinned,
+│                                refusals, --yes, mismatches reported
 ├── test_isolation.py            bubblewrap isolation (live where available),
 │                                network steps, no-isolation fallbacks
 ├── test_key_cli.py             codebud key init/passwd/status, passphrase

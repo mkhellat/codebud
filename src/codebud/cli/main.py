@@ -57,6 +57,7 @@ from codebud.cli.admin import (
     cmd_version,
 )
 from codebud.cli.chat import cmd_chat
+from codebud.cli.integrity import cmd_integrity
 from codebud.cli.key import cmd_key
 from codebud.cli.parser import KNOWN_SUBCOMMANDS, build_parser
 from codebud.cli.run import cmd_plan, cmd_run
@@ -129,6 +130,7 @@ def main():
         "config": cmd_config,
         "profiles": cmd_profiles,
         "key": cmd_key,
+        "integrity": cmd_integrity,
         "trust": cmd_trust,
         "version": cmd_version,
     }
