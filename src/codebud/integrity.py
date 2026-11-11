@@ -64,6 +64,16 @@ def file_sha256(path) -> str:
     return digest.hexdigest()
 
 
+def locate(program: str, path: str | None = None) -> str | None:
+    """The absolute path ``program`` is found at (a bare name looked up on
+    ``path``, default PATH), symlinks kept, so the program keeps the name
+    it is called by; None if it is not found."""
+    found = program if os.path.isabs(program) else shutil.which(program, path=path)
+    if not found or not os.path.isfile(found):
+        return None
+    return os.path.abspath(found)
+
+
 def resolve(program: str, path: str | None = None) -> str | None:
     """The real file ``program`` runs: an absolute path as given, a bare
     name looked up on ``path`` (default: PATH); symlinks followed."""

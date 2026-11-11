@@ -231,7 +231,10 @@ way.  Each @code{command} step is checked again right before it runs:
 the program it executes, the one a wrapper such as @command{timeout}
 runs, and the isolation tool must all be pinned and unchanged, or the
 step is refused and nothing runs --- including a program that is on the
-allow-list but was added after the last pin.  A program given as a
+allow-list but was added after the last pin.  The step then runs each of
+them by the full path that was checked, so a name cannot find another
+file inside the isolation sandbox (where @file{/tmp} is empty and some
+directories are hidden).  A program given as a
 relative path that resolves inside the project (symbolic links
 followed), such as @command{./configure}, is a file of the project,
 which the manifest does not cover; the allow-list alone decides those.
@@ -244,9 +247,10 @@ When the change is yours --- @command{ollama pull}, a system update ---
 check it with @command{codebud integrity verify}, then pin again.
 
 What this does not cover: the manifest lives in your account, so anyone
-who can change your files can also re-pin it; and a program checked
-before it runs can still read scripts or libraries that are not pinned
-(@command{python3} is pinned, the script it runs is not).
+who can change your files can also re-pin it; a program checked before
+it runs can still read scripts or libraries that are not pinned
+(@command{python3} is pinned, the script it runs is not); and a file
+rewritten in the instant between its check and its start is not caught.
 
 @node Editing the Policy Files
 @section Editing the Policy Files

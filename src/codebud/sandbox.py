@@ -101,25 +101,28 @@ def step_environment(network: bool = False) -> dict[str, str]:
     return {k: v for k, v in os.environ.items() if k not in never and _matches(k, allowed)}
 
 
-def _integrity_refusal(words: list[str], argv: list[str]) -> str | None:
-    """While an integrity manifest exists: why this step may not run (a
-    program changed or is not pinned), or None. Checked are the program
-    that is executed (the isolation tool, if any), the step's own program
-    and the one a wrapper such as `timeout` runs. A relative path that
-    resolves inside the project (./configure) is a project file, which the
-    manifest does not cover; one that leads out of it is checked."""
+def _pin_programs(argv: list[str], positions) -> tuple[list[str], str | None]:
+    """While an integrity manifest exists: check the programs at
+    ``positions`` of ``argv`` and return argv with each replaced by the
+    absolute path that was checked, so the step runs that very file even
+    where a name would find another (inside isolation, /tmp is empty and
+    some directories are hidden). Returns (argv, refusal).
+
+    A relative path that resolves inside the project (./configure) is a
+    project file, which the manifest does not cover; one that leads out
+    of it is checked."""
     from codebud import integrity
-    from codebud.safety import _unwrap
 
     try:
         manifest = integrity.load()
     except integrity.IntegrityError as exc:
-        return f"Refused: {exc}"
+        return argv, f"Refused: {exc}"
     if manifest is None:
-        return None
-    programs = dict.fromkeys(argv[:1] + words[:1] + _unwrap(words)[:1])
+        return argv, None
+    argv = list(argv)
     project = os.path.realpath(os.getcwd())
-    for program in programs:
+    for i in dict.fromkeys(positions):
+        program = argv[i]
         if "/" in program and not os.path.isabs(program):
             real = os.path.realpath(program)
             if os.path.commonpath([real, project]) == project:
@@ -127,11 +130,12 @@ def _integrity_refusal(words: list[str], argv: list[str]) -> str | None:
             program = os.path.abspath(program)
         problem = integrity.check_binary(manifest, program)
         if problem:
-            return (
+            return argv, (
                 f"Refused by the integrity check: {problem}. "
                 "If the change is yours, pin again: codebud integrity pin"
             )
-    return None
+        argv[i] = integrity.locate(program)
+    return argv, None
 
 
 class Sandbox:
@@ -178,12 +182,19 @@ class Sandbox:
         if words and words[0] == "git":
             # The repository's config must not run programs (gitsafe.py).
             words = gitsafe.git_argv(words[1:], cwd=os.getcwd())
+        # The step's program and the one a wrapper (timeout, env) runs.
+        from codebud.safety import _unwrap
+
+        words, refusal = _pin_programs(words, [0, len(words) - len(_unwrap(words))])
+        if refusal:
+            return {"stdout": "", "stderr": refusal, "returncode": 1}
         argv, refusal = isolation.prepare(words, network=network)
         if refusal:
             return {"stdout": "", "stderr": refusal, "returncode": 1}
-        refusal = _integrity_refusal(words, argv)
-        if refusal:
-            return {"stdout": "", "stderr": refusal, "returncode": 1}
+        if argv[0] != words[0]:  # the isolation tool
+            argv, refusal = _pin_programs(argv, [0])
+            if refusal:
+                return {"stdout": "", "stderr": refusal, "returncode": 1}
 
         try:
             process = subprocess.run(

@@ -7,10 +7,15 @@ wrapper such as `timeout` runs, and the isolation tool. A mismatch or an
 unpinned program is refused and nothing runs.
 """
 
+import shutil
+
 import pytest
 
 from codebud import integrity
 from codebud.sandbox import Sandbox
+
+# Absolute, so the stand-in scripts still work when a test changes PATH.
+TOUCH = shutil.which("touch")
 
 
 @pytest.fixture
@@ -23,10 +28,10 @@ def bindir(tmp_path, monkeypatch):
     for name in ("grep", "timeout", "ls", "wrap"):
         exe = d / name
         if name in ("timeout", "wrap"):  # run the rest of the command line
-            body = f'touch "{marks}/{name}"; shift_n={1 if name == "timeout" else 0}\n'
+            body = f'{TOUCH} "{marks}/{name}"; shift_n={1 if name == "timeout" else 0}\n'
             body += '[ "$shift_n" = 1 ] && shift; exec "$@"\n'
         else:
-            body = f'touch "{marks}/{name}"; echo {name}\n'
+            body = f'{TOUCH} "{marks}/{name}"; echo {name}\n'
         exe.write_text("#!/bin/sh\n" + body)
         exe.chmod(0o755)
     monkeypatch.setenv("PATH", f"{d}:/usr/bin:/bin")
@@ -58,7 +63,7 @@ def test_pinned_program_runs(bindir):
 def test_changed_program_is_refused_and_not_run(bindir):
     d, marks = bindir
     _pin(d, ["grep"])
-    (d / "grep").write_text(f'#!/bin/sh\ntouch "{marks}/grep"\n')
+    (d / "grep").write_text(f'#!/bin/sh\n{TOUCH} "{marks}/grep"\n')
     result = Sandbox().run_command("grep x")
     assert result["returncode"] == 1
     assert "grep: contents changed" in result["stderr"]
@@ -133,7 +138,7 @@ def test_a_relative_path_leaving_the_project_is_checked(bindir, tmp_path, monkey
     outside = tmp_path / "outside"
     outside.mkdir()
     tool = outside / "tool"
-    tool.write_text(f'#!/bin/sh\ntouch "{marks}/tool"\n')
+    tool.write_text(f'#!/bin/sh\n{TOUCH} "{marks}/tool"\n')
     tool.chmod(0o755)
     project = tmp_path / "project"
     (project / "sub").mkdir(parents=True)
@@ -155,3 +160,56 @@ def test_a_symlink_in_the_project_pointing_out_is_checked(bindir, tmp_path, monk
     result = Sandbox().run_command("./ls-link")
     assert result["returncode"] == 1
     assert not (marks / "ls").exists()
+
+
+def test_the_checked_file_is_the_one_that_runs(bindir, tmp_path, monkeypatch):
+    """Inside isolation a name can find another file (bwrap puts an empty
+    tmpfs on /tmp, hides directories): the step must run the very file
+    that was checked, not whatever the name finds in there."""
+    d, marks = bindir
+    other = tmp_path / "other"
+    other.mkdir()
+    (other / "grep").write_text(f'#!/bin/sh\n{TOUCH} "{marks}/impostor"\n')
+    (other / "grep").chmod(0o755)
+    shift = tmp_path / "shift"  # an "isolation tool" that changes PATH
+    shift.write_text(f'#!/bin/sh\nPATH="{other}"; export PATH\nexec "$@"\n')
+    shift.chmod(0o755)
+    monkeypatch.setattr(
+        "codebud.isolation.prepare", lambda argv, network=False: ([str(shift), *argv], None)
+    )
+    _pin(d, ["grep", str(shift)])
+    result = Sandbox().run_command("grep x")
+    assert result["returncode"] == 0, result["stderr"]
+    assert (marks / "grep").exists()
+    assert not (marks / "impostor").exists()
+
+
+def test_the_wrapped_program_runs_from_its_checked_path(bindir, tmp_path, monkeypatch):
+    d, marks = bindir
+    other = tmp_path / "other"
+    other.mkdir()
+    (other / "grep").write_text(f'#!/bin/sh\n{TOUCH} "{marks}/impostor"\n')
+    (other / "grep").chmod(0o755)
+    (d / "timeout").write_text(
+        f'#!/bin/sh\n{TOUCH} "{marks}/timeout"; shift; PATH="{other}" exec "$@"\n'
+    )
+    (d / "timeout").chmod(0o755)
+    _pin(d, ["grep", "timeout"])
+    result = Sandbox().run_command("timeout 5 grep x")
+    assert result["returncode"] == 0, result["stderr"]
+    assert (marks / "grep").exists()
+    assert not (marks / "impostor").exists()
+
+
+def test_a_program_keeps_the_name_it_was_called_by(bindir, tmp_path):
+    """The step runs the path PATH found (a symlink stays a symlink), so a
+    program that looks at its own name still sees it."""
+    d, marks = bindir
+    real = tmp_path / "multicall"
+    real.write_text('#!/bin/sh\necho "called as $(basename "$0")"\n')
+    real.chmod(0o755)
+    (d / "alias-tool").symlink_to(real)
+    _pin(d, ["alias-tool"])
+    result = Sandbox().run_command("alias-tool")
+    assert result["returncode"] == 0, result["stderr"]
+    assert "called as alias-tool" in result["stdout"]
