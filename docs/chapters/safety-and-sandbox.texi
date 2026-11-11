@@ -226,8 +226,11 @@ resolves to another file on @env{PATH}.
 @end itemize
 
 @noindent
-Switching models in @command{chat} (@code{/model}) is refused the same
-way.  Each @code{command} step is checked again right before it runs:
+A model taken into use later is checked the same way: switching models
+in @command{chat} (@code{/model}), turning project search on with
+@code{/rag on}, and building or refreshing the index
+(@command{codebud index}, @code{/index}), which embeds with the
+embedding model, are refused on a mismatch.  Each @code{command} step is checked again right before it runs:
 the program it executes, the one a wrapper such as @command{timeout}
 runs, and the isolation tool must all be pinned and unchanged, or the
 step is refused and nothing runs --- including a program that is on the

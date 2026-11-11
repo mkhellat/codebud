@@ -175,6 +175,14 @@ def cmd_index(args):
         print(f"Deleted the index ({common.plural(len(removed), 'file')}).")
         return
 
+    from codebud.core import model_integrity_problem
+    from codebud.tools.embeddings import embed_model
+
+    problem = model_integrity_problem(embed_model())
+    if problem:  # building embeds with the model: it must match the manifest
+        print(f"codebud: not indexing: {problem} (codebud integrity pin)", file=sys.stderr)
+        sys.exit(1)
+
     show = not common.no_progress(args)
 
     def progress(number: int, total: int, path: str) -> None:

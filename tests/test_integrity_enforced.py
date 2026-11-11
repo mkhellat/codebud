@@ -195,3 +195,64 @@ def test_doctor_fails_when_the_profile_requires_a_manifest(env, monkeypatch):
     passed, label, _hint = doctor.check_integrity()
     assert passed is False
     assert "profile strict requires" in label
+
+
+class _RagAgent:
+    def __init__(self):
+        self.rag = False
+
+    def set_rag(self, on):
+        self.rag = on
+
+    def get_rag(self):
+        return self.rag
+
+
+def test_rag_on_refuses_an_unpinned_embedding_model(env, capsys):
+    """Started with --no-rag (embedding model not checked), /rag on must
+    not start using it unchecked."""
+    from codebud.cli import chat
+
+    _pin(env, models=("chat:7b",))
+    state = SimpleNamespace(agent=_RagAgent())
+    chat._slash_rag(state, "on")
+    assert state.agent.rag is False
+    assert "model all-minilm:latest: not pinned" in capsys.readouterr().err
+
+
+def test_rag_on_with_a_pinned_embedding_model(env, monkeypatch, capsys):
+    from codebud.cli import chat
+
+    _pin(env)
+    monkeypatch.setattr("codebud.rag.indexer.index_status", lambda root: None)
+    state = SimpleNamespace(agent=_RagAgent())
+    chat._slash_rag(state, "on")
+    assert state.agent.rag is True
+
+
+def _index(*argv):
+    from codebud.cli import main as cli
+
+    with patch.object(sys, "argv", ["codebud", "index", *argv]):
+        try:
+            cli.main()
+        except SystemExit as exc:
+            return exc.code or 0
+    return 0
+
+
+def test_index_refuses_a_changed_embedding_model(env, monkeypatch, capsys):
+    _pin(env)
+    env["digests"]["all-minilm:latest"] = "e2"
+    built = []
+    monkeypatch.setattr("codebud.rag.indexer.index_project", lambda *a, **kw: built.append(1))
+    assert _index() == 1
+    assert not built
+    assert "model all-minilm:latest: digest changed" in capsys.readouterr().err
+
+
+def test_index_status_needs_no_model_check(env, monkeypatch):
+    _pin(env)
+    env["digests"]["all-minilm:latest"] = "e2"
+    monkeypatch.setattr("codebud.rag.indexer.index_status", lambda root: None)
+    assert _index("--status") == 0

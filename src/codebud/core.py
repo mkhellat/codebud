@@ -45,9 +45,11 @@ from .tools.tool_registry import ToolRegistry
 _SUMMARY_LIMIT = 80
 
 
-def _integrity_refusal(model: str) -> str | None:
-    """Why switching to ``model`` is refused while an integrity manifest
-    exists (not pinned, digest changed), or None."""
+def model_integrity_problem(model: str) -> str | None:
+    """Why ``model`` may not be used while an integrity manifest exists
+    (not pinned, digest changed, Ollama unreachable, damaged manifest),
+    or None -- for a model taken into use mid-session: /model, /rag on,
+    codebud index."""
     from . import integrity, llm_stub
 
     try:
@@ -56,10 +58,11 @@ def _integrity_refusal(model: str) -> str | None:
         return str(exc)
     if manifest is None:
         return None
-    problems = integrity.check_models(manifest, [model], llm_stub.model_digests() or {})
-    if not problems:
-        return None
-    return f"Not switching: {problems[0]} (codebud integrity pin --model {model})"
+    digests = llm_stub.model_digests()
+    if digests is None:
+        return "cannot reach Ollama to check the model digests"
+    problems = integrity.check_models(manifest, [model], digests)
+    return problems[0] if problems else None
 
 
 def step_summary(step: dict[str, Any]) -> str:
@@ -260,9 +263,9 @@ class AgentCore:
             return False, "Could not reach Ollama to verify available models."
         if model not in available:
             return False, f"Model '{model}' is not downloaded. Run: ollama pull {model}"
-        refusal = _integrity_refusal(model)
-        if refusal:
-            return False, refusal
+        problem = model_integrity_problem(model)
+        if problem:
+            return False, f"Not switching: {problem} (codebud integrity pin --model {model})"
 
         previous = os.environ.get("OLLAMA_MODEL")
         os.environ["OLLAMA_MODEL"] = model

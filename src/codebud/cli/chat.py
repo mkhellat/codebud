@@ -305,6 +305,14 @@ def _slash_rag(state: ChatState, rest: str) -> None:
         if words[0].lower() not in ("on", "off"):
             print_status("Use /rag on or /rag off (or /rag to show the state).\n")
             return
+        if words[0].lower() == "on":
+            from codebud.core import model_integrity_problem
+            from codebud.tools.embeddings import embed_model
+
+            problem = model_integrity_problem(embed_model())
+            if problem:
+                print_status(f"Not turning project context on: {problem} (codebud integrity pin)\n")
+                return
         agent.set_rag(words[0].lower() == "on")
     print_status(f"Project context: {'on' if agent.get_rag() else 'off'}")
     root = indexer.project_root()
