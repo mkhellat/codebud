@@ -21,6 +21,44 @@ def make_agent():
     return agent
 
 
+def check_integrity(args) -> None:
+    """Before run / plan / chat: while an integrity manifest exists, the
+    model to be used (--model, else OLLAMA_MODEL), the embedding model if
+    project search is on, and every pinned binary must match it; a
+    profile with `integrity = true` also needs a manifest to exist.
+    Exits with status 1 otherwise."""
+    from codebud import integrity, profiles
+    from codebud.llm_stub import model_digests
+    from codebud.rag.context import enabled as rag_enabled
+    from codebud.tools.embeddings import embed_model
+
+    def refuse(lines: list[str], hint: str) -> None:
+        for line in lines:
+            print(f"  {line}", file=sys.stderr)
+        print(f"codebud: {hint}", file=sys.stderr)
+        sys.exit(1)
+
+    try:
+        manifest = integrity.load()
+    except integrity.IntegrityError as exc:
+        refuse([], str(exc))
+    if manifest is None:
+        profile = profiles.active()
+        if profile.integrity:
+            refuse([], f"profile {profile.name} requires a pinned manifest: codebud integrity pin")
+        return
+    models = [getattr(args, "model", None) or os.environ.get("OLLAMA_MODEL", "")]
+    if rag_enabled():
+        models.append(embed_model())
+    problems = integrity.start_problems(manifest, [m for m in models if m], model_digests())
+    if problems:
+        refuse(
+            problems,
+            f"refusing to start: this does not match {integrity.manifest_path()}. "
+            "If the changes are yours (an update), pin again: codebud integrity pin",
+        )
+
+
 def no_progress(args) -> bool:
     return getattr(args, "no_progress", False) or not sys.stderr.isatty()
 

@@ -64,6 +64,16 @@ def file_sha256(path) -> str:
     return digest.hexdigest()
 
 
+def locate(program: str, path: str | None = None) -> str | None:
+    """The absolute path ``program`` is found at (a bare name looked up on
+    ``path``, default PATH), symlinks kept, so the program keeps the name
+    it is called by; None if it is not found."""
+    found = program if os.path.isabs(program) else shutil.which(program, path=path)
+    if not found or not os.path.isfile(found):
+        return None
+    return os.path.abspath(found)
+
+
 def resolve(program: str, path: str | None = None) -> str | None:
     """The real file ``program`` runs: an absolute path as given, a bare
     name looked up on ``path`` (default: PATH); symlinks followed."""
@@ -181,6 +191,16 @@ def check_binary(manifest: Manifest, program: str, path: str | None = None) -> s
     if file_sha256(real) != pinned["sha256"]:
         return f"{program}: contents changed ({real})"
     return None
+
+
+def start_problems(manifest: Manifest, models, digests: dict[str, str] | None) -> list[str]:
+    """Problems that stop a run from starting: the ``models`` it will use
+    (``digests`` None: Ollama could not be asked) and every pinned binary."""
+    if digests is None:
+        problems = ["cannot reach Ollama to check the model digests"]
+    else:
+        problems = check_models(manifest, models, digests)
+    return problems + check_binaries(manifest)
 
 
 def check_binaries(manifest: Manifest, path: str | None = None) -> list[str]:

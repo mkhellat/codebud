@@ -36,6 +36,13 @@ a safety policy you can read and change.
   and confirmed.  Stored data is owner-only, secrets in it are masked,
   and deleting it lists what goes and asks first.
 
+  codebud integrity pin records the model digests and the SHA-256 of
+  every allow-listed program; while that manifest exists, run, plan and
+  chat refuse to start, /model to switch and each step to run if
+  anything it uses changed or is not pinned (codebud integrity verify
+  lists it).  A profile can require a manifest
+  (integrity = true).
+
   Optional encryption at rest with age: codebud key init, then
   encrypt = true; sessions, step history and project indexes.  Older
   plaintext can be converted with codebud key encrypt-existing.

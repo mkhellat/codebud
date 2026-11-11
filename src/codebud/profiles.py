@@ -13,6 +13,8 @@ named bundle of the two dials and what goes with them:
 - prompt    extra instructions for the planner
 - encrypt   true turns encryption at rest on (crypto.py); a profile can
             only turn it on, never off
+- integrity true refuses to start without a pinned integrity manifest
+            (integrity.py); with one, it is checked whatever the profile
 
 Built in: "default" (ask, private) and "unattended" (full-auto, trusted).
 Your own live in $XDG_CONFIG_HOME/codebud/profiles/<name>.toml; a project
@@ -42,7 +44,7 @@ DEFAULT = "default"
 PROFILE_DIR = "profiles"
 _NAME = re.compile(r"^[a-z0-9][a-z0-9_-]{0,63}$")
 _KEYS = ("description", "mode", "privacy", "policy", "prompt")
-_BOOL_KEYS = ("encrypt",)
+_BOOL_KEYS = ("encrypt", "integrity")
 
 
 class ProfileError(Exception):
@@ -59,9 +61,11 @@ class Profile:
     prompt: str = ""
     source: str = "built in"  # or the profile file
     encrypt: bool = False  # turn encryption at rest on
+    integrity: bool = False  # refuse to start without an integrity manifest
 
     def summary(self) -> str:
-        return f"{self.mode}, privacy {self.privacy}" + (", encrypted" if self.encrypt else "")
+        extras = (", encrypted" if self.encrypt else "") + (", pinned" if self.integrity else "")
+        return f"{self.mode}, privacy {self.privacy}" + extras
 
 
 BUILTIN = {
@@ -117,6 +121,7 @@ def _load_file(name: str, path: Path) -> Profile:
         data.get("prompt", "").strip(),
         str(path),
         data.get("encrypt", False),
+        data.get("integrity", False),
     )
 
 

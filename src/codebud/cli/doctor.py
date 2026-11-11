@@ -212,6 +212,47 @@ def check_encryption() -> CheckResult:
     return True, "Encryption at rest: off (turn it on with encrypt = true in config.toml)", ""
 
 
+def check_integrity() -> CheckResult:
+    """The integrity manifest: what the next run would check (integrity.py)."""
+    from codebud import integrity, profiles
+    from codebud.cli.common import plural
+    from codebud.llm_stub import model_digests
+    from codebud.rag.context import enabled as rag_enabled
+
+    try:
+        manifest = integrity.load()
+    except integrity.IntegrityError as exc:
+        return False, "Integrity: the manifest cannot be used", str(exc)
+    if manifest is None:
+        profile = profiles.active()
+        if profile.integrity:
+            return (
+                False,
+                f"Integrity: profile {profile.name} requires a pinned manifest",
+                "Pin the model and tools: codebud integrity pin",
+            )
+        return (
+            True,
+            "Integrity: nothing pinned (codebud integrity pin to check model and tools)",
+            "",
+        )
+    models = [os.environ.get("OLLAMA_MODEL", "")] + ([embed_model()] if rag_enabled() else [])
+    problems = integrity.start_problems(manifest, [m for m in models if m], model_digests())
+    if problems:
+        return (
+            False,
+            f"Integrity: {plural(len(problems), 'mismatch')} with the pinned manifest",
+            f"{problems[0]}; codebud integrity verify lists them all",
+        )
+    count = len(manifest.binaries)
+    return (
+        True,
+        f"Integrity: {plural(len(manifest.models), 'model')}, "
+        f"{count} binar{'y' if count == 1 else 'ies'} pinned ({manifest.created}); all match",
+        "",
+    )
+
+
 def check_ollama_model_set() -> CheckResult:
     model = os.environ.get("OLLAMA_MODEL", "")
     if model:
@@ -369,6 +410,7 @@ _CHECKS: list[Callable[[], CheckResult]] = [
     check_config_files,
     check_private_data,
     check_encryption,
+    check_integrity,
     check_disk_space,
     check_ram,
 ]

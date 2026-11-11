@@ -45,6 +45,26 @@ from .tools.tool_registry import ToolRegistry
 _SUMMARY_LIMIT = 80
 
 
+def model_integrity_problem(model: str) -> str | None:
+    """Why ``model`` may not be used while an integrity manifest exists
+    (not pinned, digest changed, Ollama unreachable, damaged manifest),
+    or None -- for a model taken into use mid-session: /model, /rag on,
+    codebud index."""
+    from . import integrity, llm_stub
+
+    try:
+        manifest = integrity.load()
+    except integrity.IntegrityError as exc:
+        return str(exc)
+    if manifest is None:
+        return None
+    digests = llm_stub.model_digests()
+    if digests is None:
+        return "cannot reach Ollama to check the model digests"
+    problems = integrity.check_models(manifest, [model], digests)
+    return problems[0] if problems else None
+
+
 def step_summary(step: dict[str, Any]) -> str:
     """``tool(target)`` for a plan step, from its arguments: the path of a
     file tool, a patch's target file, a command line, a search query."""
@@ -243,6 +263,9 @@ class AgentCore:
             return False, "Could not reach Ollama to verify available models."
         if model not in available:
             return False, f"Model '{model}' is not downloaded. Run: ollama pull {model}"
+        problem = model_integrity_problem(model)
+        if problem:
+            return False, f"Not switching: {problem} (codebud integrity pin --model {model})"
 
         previous = os.environ.get("OLLAMA_MODEL")
         os.environ["OLLAMA_MODEL"] = model

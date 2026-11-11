@@ -15,6 +15,7 @@ nobase_python_PYTHON = \
 	codebud/cli/doctor.py \
 	codebud/cli/errors.py \
 	codebud/cli/index_hints.py \
+	codebud/cli/integrity.py \
 	codebud/cli/key.py \
 	codebud/cli/main.py \
 	codebud/cli/parser.py \

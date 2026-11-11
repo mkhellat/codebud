@@ -21,6 +21,7 @@ KNOWN_SUBCOMMANDS = {
     "config",
     "profiles",
     "key",
+    "integrity",
     "trust",
     "version",
 }
@@ -238,6 +239,27 @@ def build_parser() -> argparse.ArgumentParser:
         "(the plaintext is copied aside first, never deleted).",
     )
     p_existing.add_argument("--yes", "-y", action="store_true", help="Do not ask first.")
+
+    # integrity
+    p_int = sub.add_parser(
+        "integrity", help="Pin the model and tools, and check nothing changed since."
+    )
+    int_sub = p_int.add_subparsers(dest="integrity_action", required=True)
+    p_pin = int_sub.add_parser(
+        "pin",
+        help="Record the model digests and the hashes of the allow-listed programs.",
+    )
+    p_pin.add_argument(
+        "--model", action="append", metavar="NAME", help="Also pin this model (repeatable)."
+    )
+    p_pin.add_argument(
+        "--command", action="append", metavar="NAME", help="Also pin this program (repeatable)."
+    )
+    p_pin.add_argument(
+        "--yes", "-y", action="store_true", help="Replace a manifest without asking."
+    )
+    int_sub.add_parser("verify", help="Compare what is installed now with the manifest.")
+    int_sub.add_parser("show", help="List what is pinned.")
 
     # version
     sub.add_parser("version", help="Show version information.")

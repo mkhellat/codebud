@@ -12,6 +12,7 @@ how to tune the policy for your workflow.
 * The Safety Engine::           JSON policy + per-step validation.
 * The Sandbox::                 Subprocess guard + timeout.
 * How a Command Gets Through::  The full decision path.
+* Integrity Checks::            Refusing a swapped model or tool.
 * Editing the Policy Files::    Adding and removing allowed commands.
 * What Is Not Protected::       Honest limitations.
 @end menu
@@ -193,6 +194,67 @@ output to execution.
 @item @code{sudo pacman -Syu} @tab @kbd{rejected} @tab @code{sudo} is in neither list
 @end multitable
 
+@noindent
+While an integrity manifest exists, a step that passes these checks is
+checked once more right before it runs (@pxref{Integrity Checks}).
+
+
+@node Integrity Checks
+@section Integrity Checks
+@cindex integrity checks
+@cindex integrity.json
+@cindex manifest, integrity
+
+The allow-list says which programs a step may run; it cannot tell
+whether @command{git} is still the @command{git} you installed, or whether
+the model behind a name was replaced.  @command{codebud integrity pin}
+records both (@pxref{The integrity Subcommand}): the Ollama digest of
+the chat and embedding models, and the real path and SHA-256 of every
+program on the allow-list and of the isolation tool.
+
+While that manifest, @file{~/.config/codebud/integrity.json}, exists,
+@command{run}, @command{plan} and @command{chat} check it before they do
+anything else, and refuse to start on any difference:
+
+@itemize
+@item the model to be used (@option{--model}, else @env{OLLAMA_MODEL})
+is not pinned, its digest changed, or Ollama cannot be asked;
+@item project search is on and the embedding model is not pinned or
+changed (@option{--no-rag} leaves it out);
+@item a pinned program's file changed, is gone, or the name now
+resolves to another file on @env{PATH}.
+@end itemize
+
+@noindent
+A model taken into use later is checked the same way: switching models
+in @command{chat} (@code{/model}), turning project search on with
+@code{/rag on}, and building or refreshing the index
+(@command{codebud index}, @code{/index}), which embeds with the
+embedding model, are refused on a mismatch.  Each @code{command} step is checked again right before it runs:
+the program it executes, the one a wrapper such as @command{timeout}
+runs, and the isolation tool must all be pinned and unchanged, or the
+step is refused and nothing runs --- including a program that is on the
+allow-list but was added after the last pin.  The step then runs each of
+them by the full path that was checked, so a name cannot find another
+file inside the isolation sandbox (where @file{/tmp} is empty and some
+directories are hidden).  A program given as a
+relative path that resolves inside the project (symbolic links
+followed), such as @command{./configure}, is a file of the project,
+which the manifest does not cover; the allow-list alone decides those.
+A relative path that leads out of the project (@file{../tool}) is
+checked like any other program.  A manifest that cannot be read is an error, never a reason to skip
+the check, and a profile with @code{integrity = true} refuses to start,
+or to be switched to with @code{/profile}, while nothing is pinned
+(@pxref{Profiles}).
+
+When the change is yours --- @command{ollama pull}, a system update ---
+check it with @command{codebud integrity verify}, then pin again.
+
+What this does not cover: the manifest lives in your account, so anyone
+who can change your files can also re-pin it; a program checked before
+it runs can still read scripts or libraries that are not pinned
+(@command{python3} is pinned, the script it runs is not); and a file
+rewritten in the instant between its check and its start is not caught.
 
 @node Editing the Policy Files
 @section Editing the Policy Files

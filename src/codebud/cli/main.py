@@ -57,6 +57,7 @@ from codebud.cli.admin import (
     cmd_version,
 )
 from codebud.cli.chat import cmd_chat
+from codebud.cli.integrity import cmd_integrity
 from codebud.cli.key import cmd_key
 from codebud.cli.parser import KNOWN_SUBCOMMANDS, build_parser
 from codebud.cli.run import cmd_plan, cmd_run
@@ -129,6 +130,7 @@ def main():
         "config": cmd_config,
         "profiles": cmd_profiles,
         "key": cmd_key,
+        "integrity": cmd_integrity,
         "trust": cmd_trust,
         "version": cmd_version,
     }
@@ -142,6 +144,7 @@ def main():
         if args.subcommand in _STORES_DATA:
             crypto.check_ready()  # encryption on but unusable: refuse, never store plaintext
         if args.subcommand in ("run", "plan", "chat"):
+            common.check_integrity(args)  # before anything runs or is sent
             common.warn_if_own_code_in_project()
             common.review_project_policy()
             common.unlock_project_index()
