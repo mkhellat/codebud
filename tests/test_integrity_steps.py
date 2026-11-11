@@ -123,3 +123,35 @@ def test_damaged_manifest_refuses_every_step(bindir):
     assert result["returncode"] == 1
     assert "integrity.json" in result["stderr"]
     assert not (marks / "grep").exists()
+
+
+def test_a_relative_path_leaving_the_project_is_checked(bindir, tmp_path, monkeypatch):
+    """Only a path that resolves inside the project is a project file;
+    ../ that leaves it reaches an installed program like any other."""
+    d, marks = bindir
+    _pin(d, ["grep"])
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    tool = outside / "tool"
+    tool.write_text(f'#!/bin/sh\ntouch "{marks}/tool"\n')
+    tool.chmod(0o755)
+    project = tmp_path / "project"
+    (project / "sub").mkdir(parents=True)
+    monkeypatch.chdir(project)
+    for cmd in ("../outside/tool", "sub/../../outside/tool"):
+        result = Sandbox().run_command(cmd)
+        assert result["returncode"] == 1, cmd
+        assert "not pinned" in result["stderr"], cmd
+    assert not (marks / "tool").exists()
+
+
+def test_a_symlink_in_the_project_pointing_out_is_checked(bindir, tmp_path, monkeypatch):
+    d, marks = bindir
+    _pin(d, ["grep"])
+    project = tmp_path / "project"
+    project.mkdir()
+    (project / "ls-link").symlink_to(d / "ls")
+    monkeypatch.chdir(project)
+    result = Sandbox().run_command("./ls-link")
+    assert result["returncode"] == 1
+    assert not (marks / "ls").exists()

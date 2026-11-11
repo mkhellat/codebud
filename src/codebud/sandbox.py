@@ -105,8 +105,9 @@ def _integrity_refusal(words: list[str], argv: list[str]) -> str | None:
     """While an integrity manifest exists: why this step may not run (a
     program changed or is not pinned), or None. Checked are the program
     that is executed (the isolation tool, if any), the step's own program
-    and the one a wrapper such as `timeout` runs. A relative path such as
-    ./configure is a project file, which the manifest does not cover."""
+    and the one a wrapper such as `timeout` runs. A relative path that
+    resolves inside the project (./configure) is a project file, which the
+    manifest does not cover; one that leads out of it is checked."""
     from codebud import integrity
     from codebud.safety import _unwrap
 
@@ -117,9 +118,13 @@ def _integrity_refusal(words: list[str], argv: list[str]) -> str | None:
     if manifest is None:
         return None
     programs = dict.fromkeys(argv[:1] + words[:1] + _unwrap(words)[:1])
+    project = os.path.realpath(os.getcwd())
     for program in programs:
         if "/" in program and not os.path.isabs(program):
-            continue
+            real = os.path.realpath(program)
+            if os.path.commonpath([real, project]) == project:
+                continue  # a file of the project
+            program = os.path.abspath(program)
         problem = integrity.check_binary(manifest, program)
         if problem:
             return (

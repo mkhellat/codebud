@@ -232,8 +232,11 @@ the program it executes, the one a wrapper such as @command{timeout}
 runs, and the isolation tool must all be pinned and unchanged, or the
 step is refused and nothing runs --- including a program that is on the
 allow-list but was added after the last pin.  A program given as a
-relative path, such as @command{./configure}, is a file of the project,
-which the manifest does not cover; the allow-list alone decides those.  A manifest that cannot be read is an error, never a reason to skip
+relative path that resolves inside the project (symbolic links
+followed), such as @command{./configure}, is a file of the project,
+which the manifest does not cover; the allow-list alone decides those.
+A relative path that leads out of the project (@file{../tool}) is
+checked like any other program.  A manifest that cannot be read is an error, never a reason to skip
 the check, and a profile with @code{integrity = true} refuses to start
 while nothing is pinned (@pxref{Profiles}).
 
