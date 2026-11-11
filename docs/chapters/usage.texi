@@ -1158,11 +1158,20 @@ line 2
 @dots{}
 @end example
 
-Or, if the step failed:
+Or, if the step failed, its exit status and, in full, what it wrote to
+standard error, then its standard output, and a line saying the run
+stopped there:
 
 @example
-  -> exit 1, stderr: pytest: no tests ran
+  -> exit 1
+  stderr: pytest: no tests ran
+-- stopped: step 2 failed; the steps after it did not run
 @end example
+
+@noindent
+@code{/output} in @command{chat} shows a failed step's output too.  A
+step refused before it ran (by the mode, or a safety check) prints the
+reason instead.
 
 @strong{@command{run} and @command{plan -x}} always print the full,
 untruncated stdout of every step --- there is no follow-up prompt in a

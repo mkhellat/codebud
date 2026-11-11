@@ -109,7 +109,15 @@ def run_steps(
         result = agent.executor.execute_plan({"status": "ok", "plan": [step]})
         outcome.changed_files |= _may_change_files(agent, step)
         if result.get("status") != "ok":
-            print_error(str(result), label="Execution error")
+            failed = result.get("result")
+            if failed is not None:  # the step ran and failed: show its output
+                print_step_result(failed, verbose=verbose, full=full_output)
+                outcome.last_output = failed
+                outcome.outputs.append(failed)
+                print_status(f"-- stopped: step {number} failed; the steps after it did not run")
+            else:  # refused or crashed before producing output
+                label = "Refused" if result.get("status") == "step_refused" else "Step error"
+                print_error(str(result.get("error") or result), label=label)
             outcome.failed = True
             break
         out = result["results"].get(step["id"], {})

@@ -25,6 +25,9 @@ a safety policy you can read and change.
 
   codebud skill install lets Claude Code or OpenClaw call codebud.
 
+  A failed step shows what it printed and why it failed (its standard
+  error in full), and a refused step shows the reason.
+
 ** Privacy
 
   Prompts go only to the Ollama on this machine by default; no cloud

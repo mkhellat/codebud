@@ -198,9 +198,13 @@ def print_step_result(result: dict[str, Any], *, verbose: bool = False, full: bo
     summary = f"{color}{mark}{_RESET}"
     if stdout:
         summary += f", {lines} line{'s' if lines != 1 else ''} stdout"
-    if stderr:
+    if stderr and rc == 0:
         summary += f", stderr: {stderr[:80]}"
     _err(f"  -> {summary}")
+    if stderr and rc != 0:  # why it failed: shown in full
+        _err(
+            f"  {_RED}stderr:{_RESET} {visible(result.get('stderr', '') or '', one_line=False).rstrip()}"
+        )
 
     if not stdout:
         return
