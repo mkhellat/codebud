@@ -115,7 +115,12 @@ class Executor:
 
             # Stop on error
             if tool_result.get("returncode", 0) != 0:
-                return {"status": "step_error", "error": f"Step '{step_id}' failed", "step": step}
+                return {
+                    "status": "step_error",
+                    "error": f"Step '{step_id}' failed",
+                    "step": step,
+                    "result": results[step_id],  # its output: why it failed
+                }
 
         return {"status": "ok", "results": results}
 

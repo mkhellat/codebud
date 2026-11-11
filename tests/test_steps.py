@@ -171,3 +171,45 @@ def test_no_answer_to_an_egress_prompt_is_not_a_yes(answers, monkeypatch):
     agent = _Agent()
     outcome = run_steps(agent, [_step(1), _search(2)], "ask")
     assert agent.ran == ["step_1"] and outcome.unconfirmed == 1
+
+
+class _ResultAgent(_Agent):
+    """An agent whose executor returns a given result for every step."""
+
+    def __init__(self, result):
+        super().__init__()
+        outer = self
+
+        class Executor:
+            def execute_plan(self, plan):
+                outer.ran.append(plan["plan"][0]["id"])
+                return result
+
+        self.executor = Executor()
+
+
+def test_a_failed_step_shows_its_own_output(answers, capsys):
+    """It used to print the executor's raw step_error dict; the program's
+    stdout and stderr -- why it failed -- were lost."""
+    long_reason = "Refused by the integrity check: wc: not pinned. " + "x" * 120
+    failed = {"stdout": "partial output\n", "stderr": long_reason, "returncode": 2}
+    agent = _ResultAgent({"status": "step_error", "error": "Step 'step_1' failed",
+                          "step": _step(1), "result": failed})  # fmt: skip
+    outcome = run_steps(agent, [_step(1), _step(2)], "full-auto")
+    err = capsys.readouterr().err
+    assert "partial output" in err
+    assert long_reason in err  # in full, not cut at 80 characters
+    assert "exit 2" in err
+    assert "{'status'" not in err
+    assert outcome.failed and agent.ran == ["step_1"]
+    assert outcome.last_output == failed  # /output shows it
+
+
+def test_a_refused_step_shows_the_reason_not_a_dict(answers, capsys):
+    agent = _ResultAgent({"status": "step_refused", "error": "Not allowed in plan mode",
+                          "step": _step(1)})  # fmt: skip
+    outcome = run_steps(agent, [_step(1)], "full-auto")
+    err = capsys.readouterr().err
+    assert "Not allowed in plan mode" in err
+    assert "{'status'" not in err
+    assert outcome.failed

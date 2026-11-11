@@ -237,3 +237,27 @@ class TestPatchTool:
         result = PatchTool().run({"patch": patch})
         assert result["returncode"] == 1
         assert "ghost.txt" in result["stderr"]
+
+
+def test_failed_step_error_carries_the_step_result():
+    """run and chat show a failed step's output, so the executor must
+    return it with the step_error."""
+    from codebud.executor import Executor
+
+    class Tool:
+        def run(self, args):
+            return {"stdout": "out", "stderr": "why it failed", "returncode": 3}
+
+    class Registry:
+        def get(self, name):
+            return Tool()
+
+    class Memory:
+        def add_snapshot(self, step, result):
+            pass
+
+    step = {"id": "step_0", "description": "d", "tool": "command", "args": {"cmd": "x"}}
+    result = Executor(Registry(), None, Memory()).execute_plan({"plan": [step]})
+    assert result["status"] == "step_error"
+    assert result["result"]["stderr"] == "why it failed"
+    assert result["result"]["returncode"] == 3
