@@ -29,6 +29,7 @@ invalid (@pxref{Invalid Plan}).  Extra arguments are ignored.
 * patch::               Apply a unified diff to a file.
 * web_search::          Search the web via DuckDuckGo Lite.
 * search_embeddings::   Find semantically similar stored entries.
+* host_network::        The host's sockets, routes and ARP table.
 @end menu
 
 
@@ -434,3 +435,55 @@ Earlier versions searched @file{$XDG_DATA_HOME/codebud/embeddings/index.json},
 which nothing ever filled; it is no longer read and can be deleted.  (An
 @code{embed} tool that returned a vector without storing it was removed
 too.)
+
+
+@node host_network
+@section @code{host_network}
+@cindex host_network tool
+@cindex live triage
+@cindex network state, host
+
+Shows the host's network tables: TCP and UDP sockets (IPv4 and IPv6) with
+their state, Unix sockets, the IPv4 routing table and the ARP table, each
+socket with the process that holds it where that can be seen.  This is
+the volatile network state RFC 3227 (section 2.1) and NIST SP 800-86
+(section 5.2.1.3) put first in live response.
+
+@command{ss}, @command{netstat} and @command{ip} report the network
+namespace they run in, so inside a sandboxed step they show only a
+loopback interface.  @code{host_network} runs inside Codebud, like
+@code{file_read}, and reads @file{/proc/1/net/}: it opens no socket and
+needs no network.  Inside a container, @file{/proc/1/net} is the
+container's network namespace, which is the one to report there.  A
+socket's process is found through
+@file{/proc/@var{pid}/fd}, which can be read for your own processes (all
+of them as root); others show @samp{-}.
+
+It is offered only under a profile with observer isolation
+(@code{isolation = "observer"}, @pxref{Isolated Steps}); every other
+profile's planner prompt is unchanged.
+
+@subsection Arguments
+
+@table @code
+@item table
+@emph{Optional.}  One of @code{tcp}, @code{udp}, @code{unix},
+@code{route}, @code{arp}, or @code{all} (the default).
+@end table
+
+@subsection Returns
+
+@code{stdout} holds one section per table, for example:
+@example
+TCP sockets (/proc/1/net/tcp, tcp6)
+  PROTO  STATE        LOCAL            REMOTE           UID   PROCESS
+  tcp    LISTEN       127.0.0.1:631    0.0.0.0:0        0     -
+  tcp    ESTABLISHED  192.168.1.5:22   10.0.0.9:50000   1000  123/sshd
+@dots{}
+IPv4 routes (/proc/1/net/route)
+  default via 192.168.1.1 dev eth0 metric 100
+@end example
+
+@noindent
+A table that cannot be read is named (@samp{not readable: arp}) rather
+than failing the step; an unknown @code{table} is an error.

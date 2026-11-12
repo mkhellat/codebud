@@ -442,6 +442,7 @@ policy = "review-policy"      # directory, relative to this file
 prompt = "Never modify files under tests/."
 encrypt = true                # turn encryption at rest on
 integrity = true              # refuse to start without a pinned manifest
+isolation = "observer"        # steps see the host's processes (read-only)
 @end example
 
 @noindent
@@ -456,7 +457,8 @@ nothing is pinned, and @code{/profile} refuses to switch to it then; once someth
 profile (@pxref{Integrity Checks}).  A profile file with a mistake --- an unknown key, a mode
 or level that does not exist, a missing policy directory --- is refused
 with a message rather than half applied.  A project cannot define or
-choose a profile, since a profile can lower the privacy level.
+choose a profile, since a profile can lower the privacy level.  @code{isolation = "observer"} runs command steps with the host's
+processes in view, for live triage (@pxref{Isolated Steps}).
 
 
 @node Isolated Steps
@@ -487,6 +489,29 @@ keyring; the gpg and SSH agents --- would let a step act outside it, and
 connecting to a socket is not a write a read-only file system stops;
 @item stopped together with Codebud.
 @end itemize
+
+@cindex observer isolation
+A sandboxed step sees only itself: @command{ps} lists two processes,
+@command{ss} and @command{ip} show a loopback interface and nothing on
+it.  For live triage, where a falsely clean picture is the worst result,
+a profile can ask for @dfn{observer} isolation
+(@code{isolation = "observer"}, @pxref{Profiles}).  The step then gets
+the host's @file{/proc}, read-only, instead of a fresh one: @command{ps}
+and @command{top} see the host's processes, and @file{/proc/1/net/}
+holds the host's socket, route and ARP tables.  Everything else stays:
+its own process namespace, so it cannot signal (kill) a host process;
+no network; the file system read-only except the project; the hidden
+directories above.  Other processes' environments and memory stay
+unreadable (the kernel refuses across the sandbox's user namespace);
+their command lines are visible, as they are to @command{ps}.  Observer
+isolation needs bubblewrap: without it --- only @command{unshare}, or no
+isolation tool at all --- a step would share the host's process
+namespace and could signal its processes, so it is refused, at every
+privacy level but @code{trusted} (which means no isolation, by your
+choice).  Observer isolation changes what a step can see, not the network
+rules: at @code{private} a step that declares the network still gets
+it, so profiles for live triage should also set
+@code{privacy = "locked"}.
 
 @cindex environment of command steps
 @cindex step_env

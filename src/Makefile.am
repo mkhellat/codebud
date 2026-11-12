@@ -55,6 +55,7 @@ nobase_python_PYTHON = \
 	codebud/tools/commands.py \
 	codebud/tools/embeddings.py \
 	codebud/tools/file_io.py \
+	codebud/tools/host_network.py \
 	codebud/tools/patcher.py \
 	codebud/tools/tool_registry.py \
 	codebud/tools/web_search.py \

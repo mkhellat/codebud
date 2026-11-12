@@ -312,7 +312,7 @@ USER REQUEST: {user_message}
 
     def _build_retry_prompt(self, user_message: str) -> str:
         """Minimal retry prompt used when the first attempt returned non-JSON."""
-        tool_names = list(self.tool_registry.tools.keys())
+        tool_names = self.tool_registry.names()
         return f"""\
 OUTPUT ONLY VALID JSON. No markdown. No code fences. No text before or after the JSON.
 
@@ -385,7 +385,7 @@ Format: {{"status":"ok","plan":[{{"id":"step_0","description":"...","tool":"..."
         """
         problems = []
         for number, step in enumerate(plan_json.get("plan", []), 1):
-            tool = self.tool_registry.tools.get(step.get("tool"))
+            tool = self.tool_registry.get(step.get("tool"))
             args = step.get("args", {})
             missing = [a for a in getattr(tool, "required_args", ()) if a not in args]
             if missing:

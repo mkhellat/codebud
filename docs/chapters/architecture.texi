@@ -631,7 +631,8 @@ src/codebud/                   the package
     ├── commands.py        command
     ├── patcher.py         patch
     ├── web_search.py      web_search
-    └── embeddings.py      search_embeddings
+    ├── embeddings.py      search_embeddings
+    └── host_network.py    host_network (observer profiles only)
 
 src/codebud_sec/               the security layer (authorized security work)
 ├── engagement.py      engagement file: authorized scope
