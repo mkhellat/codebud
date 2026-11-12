@@ -21,6 +21,13 @@ powerful_commands.json and trusted_sequences.json:
 Entries must be plain command words ("git status", "python3"): anything
 else is dropped with a warning, from every source, since the lists are
 also shown to the model.
+
+refused_arguments.json maps a program to options it may never be given
+({"curl": ["-T", "--upload-file"]}). Unlike the lists above, every
+layer counts: the active profile's policy directory, your config dir and
+the project's .codebud/ are combined, and each can only add to the
+refusals built into safety.py -- never remove one. A project needs no
+trust for it, since adding refusals only narrows.
 """
 
 import hashlib
@@ -39,6 +46,7 @@ HARMLESS_FILE = "harmless_commands.json"
 POWERFUL_FILE = "powerful_commands.json"
 TRUSTED_SEQ_FILE = "trusted_sequences.json"
 POLICY_FILES = (HARMLESS_FILE, POWERFUL_FILE, TRUSTED_SEQ_FILE)
+REFUSED_FILE = "refused_arguments.json"
 TRUST_FILE = "trusted-projects.json"
 
 _WORDS = re.compile(r"^[A-Za-z0-9._+/-]+( [A-Za-z0-9._+/:=-]+)*$")
@@ -54,6 +62,11 @@ RISKY = {
     "make", "npm", "npx", "pip", "pip3", "cargo", "go", "docker", "podman", "systemctl",
     "systemd-run", "busctl", "dbus-send", "git push", "git config", "git remote",
 }  # fmt: skip
+
+
+_PROGRAM = re.compile(r"^[A-Za-z0-9._+-]+$")
+# -e, -iR, --exec, --vacuum-* (a trailing * means "and anything after")
+_OPTION = re.compile(r"^--?[A-Za-z0-9][A-Za-z0-9_-]*\*?$")
 
 
 def valid_entry(entry) -> bool:
@@ -217,3 +230,41 @@ def effective(start=None) -> Policy:
     names = {s["name"] for s in proj_s}
     sequences = [s for s in user_s if s["name"] in names]
     return Policy(harmless, powerful, sequences, project, widening, trusted=not widening)
+
+
+def _refused_file(path: Path) -> dict[str, set[str]]:
+    """The refusals in one refused_arguments.json, bad entries dropped
+    with a warning (a damaged file adds nothing; it removes nothing)."""
+    try:
+        data = json.loads(path.read_text())
+    except (OSError, ValueError) as exc:
+        logger.warning("Ignoring policy file %s: %s", path, exc)
+        return {}
+    if not isinstance(data, dict):
+        logger.warning("Ignoring policy file %s: not a JSON object", path)
+        return {}
+    refused = {}
+    for program, options in data.items():
+        if not (_PROGRAM.match(program) and isinstance(options, list)):
+            logger.warning("Ignoring entry %r in %s: not a program and a list", program, path)
+            continue
+        good = {o for o in options if isinstance(o, str) and _OPTION.match(o)}
+        for bad in (o for o in options if o not in good):
+            logger.warning("Ignoring option %r for %s in %s: not an option", bad, program, path)
+        if good:
+            refused[program] = good
+    return refused
+
+
+def refused_arguments(start=None) -> dict[str, set[str]]:
+    """Options refused per program by the refused_arguments.json files in
+    force for the project at ``start``: the active profile's, yours and the
+    project's, combined (safety.py adds its built-in ones)."""
+    directories = [paths.PROFILE_POLICY_DIR, paths.config_dir(), paths.project_config_dir(start)]
+    combined: dict[str, set[str]] = {}
+    for directory in dict.fromkeys(d for d in directories if d is not None):
+        path = Path(directory) / REFUSED_FILE
+        if path.is_file():
+            for program, options in _refused_file(path).items():
+                combined.setdefault(program, set()).update(options)
+    return combined

@@ -69,6 +69,11 @@ a safety policy you can read and change.
   4 high, 5 medium and 14 low issues before this release; all are fixed
   or, where agreed, documented.
 
+  More options are refused whatever the allow-list says (nc -e, tar
+  --to-command, rsync -e, journalctl --vacuum-*, ...), also behind
+  wrappers such as timeout and env; refused_arguments.json files (yours,
+  a profile's, a project's) can only add to them.
+
 ** Building and installing
 
   GNU Autotools (./bootstrap, ./configure, make, make check, make

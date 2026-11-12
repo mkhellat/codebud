@@ -105,6 +105,52 @@ def _python_runs_inline_code(args: list[str]) -> bool:
     return False
 
 
+# Options that make a program run another program or destroy data,
+# refused whatever the allow-lists say. refused_arguments.json files can
+# add to this (policy.refused_arguments), never take from it.
+_REFUSED_FLOOR = {
+    "nc": {"-e", "-c", "--exec", "--sh-exec", "--lua-exec"},
+    "ncat": {"-e", "-c", "--exec", "--sh-exec", "--lua-exec"},
+    "netcat": {"-e", "-c"},
+    "tar": {
+        "--to-command", "-I", "--use-compress-program", "--checkpoint-action",
+        "-F", "--info-script", "--new-volume-script", "--rmt-command", "--rsh-command",
+    },
+    "rsync": {"-e", "--rsh"},
+    "sort": {"--compress-program"},
+    "journalctl": {"--rotate", "--vacuum-*", "--flush", "--relinquish-var", "--sync"},
+}  # fmt: skip
+
+
+def _option_matches(arg: str, pattern: str) -> bool:
+    """Whether the argument ``arg`` is the option ``pattern``, the way
+    programs parse options: --opt and --opt=value; -o, -ovalue and -o in
+    a cluster of short options (-vo); -iR and -iRvalue; prefix* patterns."""
+    if pattern.endswith("*"):
+        return arg.startswith(pattern[:-1])
+    if pattern.startswith("--"):
+        return arg == pattern or arg.startswith(pattern + "=")
+    if len(pattern) == 2:
+        # -e, -ve, -e/bin/sh: any short option word holding the letter. This
+        # can refuse a cluster where the letter is in fact another option's
+        # value (-w5e): refusing too much is the safe side.
+        return arg.startswith("-") and not arg.startswith("--") and pattern[1] in arg[1:]
+    return arg.startswith(pattern)
+
+
+def refused_option(args: list[str], patterns) -> str | None:
+    """The first argument in ``args`` that is one of the refused option
+    ``patterns``, or None. Words after "--" are operands, not options."""
+    for arg in args:
+        if arg == "--":
+            return None
+        if arg.startswith("-") and len(arg) > 1:
+            for pattern in patterns:
+                if _option_matches(arg, pattern):
+                    return arg
+    return None
+
+
 def _forbidden_argument(words: list[str]) -> str | None:
     """Return the argument of ``words`` this policy always refuses, if any."""
     program, args = words[0], words[1:]
@@ -420,6 +466,7 @@ class SafetyEngine:
         self.harmless_commands = effective.harmless
         self.powerful_commands = effective.powerful
         self.trusted_sequences = effective.sequences
+        self.refused = policy.refused_arguments()
 
     # ------------------------------------------------------------------
     # Public API
@@ -512,6 +559,16 @@ class SafetyEngine:
         forbidden = _forbidden_argument([program, *args])
         if forbidden:
             return f"{program} {forbidden} is never allowed (it can run or delete anything)"
+        if program == "tar" and args and not args[0].startswith("-"):
+            # tar's old style: a dash-less first argument is a cluster of
+            # options (tar cIf a.tar . is tar -c -I -f).
+            args[0] = "-" + args[0]
+        floor = refused_option(args, _REFUSED_FLOOR.get(program, ()))
+        if floor:
+            return f"{program} {floor} is never allowed (it can run or delete anything)"
+        added = refused_option(args, getattr(self, "refused", {}).get(program, ()))
+        if added:
+            return f"{program} {added} is never allowed (refused_arguments.json)"
         return None
 
     def _command_refusal(self, cmd: str) -> str | None:
