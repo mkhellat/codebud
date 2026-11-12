@@ -76,13 +76,15 @@ def _shipped_programs() -> set[str]:
 
 
 def _programs(extra) -> set[str]:
-    from codebud import isolation, policy
+    from codebud import isolation, policy, profiles
 
     programs = integrity.allow_listed_programs(policy.effective()) | set(extra)
     programs |= _shipped_programs()
     tool = isolation.available()
     if tool:
         programs.add(tool)  # it runs every isolated step
+    if profiles.shipped_profile_dir() is not None and isolation.fence_available():
+        programs |= set(isolation.FENCE_PROGRAMS)  # the security layer's network fence
     return programs
 
 

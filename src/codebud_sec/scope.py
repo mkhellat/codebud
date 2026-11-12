@@ -1177,7 +1177,10 @@ class ScopeGuard:
     safety engine (activate) and remove again (deactivate)."""
 
     def __init__(self, engagement):
+        from .fence import ScopeFence
+
         self.engagement = engagement
+        self.fence = ScopeFence(engagement)
 
     def _problems(self, targets: Targets) -> list[str]:
         e = self.engagement
@@ -1225,6 +1228,9 @@ class ScopeGuard:
                 "but codebud cannot read its targets",
                 None,
             )
+        fence_problem = self.fence.problem(words)
+        if fence_problem:
+            return f"engagement scope: {fence_problem}", None
         name = self.engagement.path.name
         for program, targets in found:
             problems = self._problems(targets)
@@ -1247,9 +1253,11 @@ class ScopeGuard:
 
         safety.add_step_check(self.refusal, provides="engagement")
         safety.add_step_notice(self.notice)
+        self.fence.activate()
 
     def deactivate(self) -> None:
         from codebud import safety
 
         safety.remove_step_check(self.refusal)
         safety.remove_step_notice(self.notice)
+        self.fence.deactivate()

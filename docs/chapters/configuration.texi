@@ -502,7 +502,15 @@ proxies, DNS servers, addresses given to @command{curl --resolve} ---
 and refuses the step when one is out of scope, excluded, or the
 engagement window is closed.  A command it cannot read (an unknown
 option, a target list outside the project, an ambiguous URL) is refused
-too.
+too.  Scanning steps also run behind the network fence (@pxref{Isolated
+Steps}), which lets through only the addresses the step names --- its
+names resolved just before it runs --- and never an excluded one, so a
+tool that reaches further than its command line says meets a closed
+door.  Behind the fence nmap needs @option{--unprivileged} (connect
+scans), and SYN, UDP and OS scans and @command{masscan} are refused; an
+engagement file with @code{fence_scanning = false} gives them back, with
+the scope guard as their only check.  Lookups (@command{dig},
+@command{host}, @command{whois}) are not fenced.
 
 Its allow-list: reading results runs once the plan is approved
 (@command{cat}, @command{grep}, @command{rg}, @command{jq},
@@ -696,6 +704,41 @@ warns once and runs them; at @code{locked} it refuses command steps.
 Install bubblewrap with your package manager (@command{pacman -S
 bubblewrap}, @command{apt install bubblewrap}, @command{dnf install
 bubblewrap}).
+
+@subheading The network fence
+@cindex network fence
+@cindex pasta
+@cindex nftables
+
+A step that declares the network normally shares the machine's network.
+An optional layer --- the security layer, while an engagement is open
+--- can instead have a network step @dfn{fenced}: it then runs in a
+network namespace of its own whose only way out is @command{pasta}
+(from the passt package), and @command{nft} rules in that namespace let
+through only the addresses the layer allows for that step, refusing
+excluded ranges first.
+
+@itemize
+@item Nothing of the machine itself is reachable: not its loopback, not
+through the gateway address, and no port is forwarded in either
+direction (pasta runs with @option{--no-map-gw -t none -u none -T none -U
+none}; its defaults would reach the machine's own services).
+@item The step runs without capabilities (@code{bwrap --cap-drop ALL}),
+in a user namespace of its own, so it cannot change the rules --- and
+has no raw sockets, whose packets would pass them by.  Scans that need
+raw sockets (nmap's SYN, UDP and OS scans, masscan) cannot run fenced;
+nmap needs @option{--unprivileged}.
+@item There is no DNS: the names the step uses are resolved before it
+runs and written into an @file{/etc/hosts} of its own.  Lookups through
+a resolver would carry data to whoever serves a name.
+@end itemize
+
+A step that must be fenced is refused when the fence cannot be built:
+without bubblewrap, @command{pasta} or @command{nft}, or at privacy
+@code{trusted}.  @command{codebud integrity pin} pins @command{pasta},
+@command{nft} and @command{sh} too when the security layer is installed.
+Install them with @command{pacman -S passt nftables}, @command{apt
+install passt nftables} or @command{dnf install passt nftables}.
 
 
 @node Feature Flags

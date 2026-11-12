@@ -21,6 +21,7 @@ SCOPE = """\
 client = "ACME"
 in_scope = ["10.0.0.0/16", "app.example.com", "2001:db8::/48"]
 out_of_scope = ["10.0.5.0/24", "10.0.9.9"]
+fence_scanning = false  # the command-line guard alone (the fence: test_scope_fence.py)
 """
 
 
@@ -68,6 +69,7 @@ def engagement(tmp_path):
 def guard(engagement, monkeypatch):
     monkeypatch.setattr(safety, "_STEP_CHECKS", [])
     monkeypatch.setattr(safety, "_STEP_NOTICES", [])
+    monkeypatch.setattr("codebud.isolation._FENCES", [])
     monkeypatch.delenv("CODEBUD_PRIVACY", raising=False)
     # Steps count as isolated here whatever the machine has (macOS CI has
     # no bubblewrap); tests of the no-isolation case set it back.
@@ -250,6 +252,7 @@ def test_a_closed_window_refuses_active_steps(tmp_path, monkeypatch):
     path.write_text(SCOPE + "starts = 2020-01-01T00:00:00Z\nends = 2020-01-02T00:00:00Z\n")
     monkeypatch.setattr(safety, "_STEP_CHECKS", [])
     monkeypatch.setattr(safety, "_STEP_NOTICES", [])
+    monkeypatch.setattr("codebud.isolation._FENCES", [])
     monkeypatch.setattr("codebud.isolation.available", lambda: "bwrap")
     ScopeGuard(load(path)).activate()
     reason = _engine().refusal_reason(_step("nmap 10.0.0.5"))

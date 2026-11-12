@@ -12,12 +12,12 @@ It is a TOML file whose path is passed on the command line
 in-scope and out-of-scope targets (CIDRs, hosts, domains), and the time
 window the work is authorized for.
 
-Scope handling is **warn, do not block** (D14): a target outside the scope
-or the window raises a clear, logged warning and asks for confirmation,
-but is allowed. The engagement file and every action are recorded
-regardless, so the record is complete even when the operator proceeds.
-Nothing here grants access; it only states, and helps keep to, what was
-already authorized.
+Scope handling (D14, changed by the step 5 plan's D14i): a target of an
+active tool outside the scope, an excluded one, or outside the window is
+refused; a passive lookup out of scope asks for confirmation
+(codebud_sec/scope.py). Scanning steps also run behind the network fence
+unless fence_scanning = false (codebud_sec/fence.py). Nothing here grants
+access; it only states, and helps keep to, what was already authorized.
 """
 
 import ipaddress
@@ -34,7 +34,8 @@ else:  # pragma: no cover - Python 3.10
 _STRING_KEYS = ("client", "ticket", "operator", "notes")
 _LIST_KEYS = ("in_scope", "out_of_scope")
 _TIME_KEYS = ("starts", "ends")
-_KEYS = (*_STRING_KEYS, *_LIST_KEYS, *_TIME_KEYS)
+_BOOL_KEYS = ("fence_scanning",)
+_KEYS = (*_STRING_KEYS, *_LIST_KEYS, *_TIME_KEYS, *_BOOL_KEYS)
 
 
 class EngagementError(Exception):
@@ -87,6 +88,10 @@ class Engagement:
     out_of_scope: tuple[Target, ...] = ()
     starts: datetime | None = None
     ends: datetime | None = None
+    # Scanning steps run behind the network fence (codebud_sec/fence.py);
+    # false gives raw scans (nmap -sS, masscan) back, judged by the scope
+    # guard alone.
+    fence_scanning: bool = True
 
     def header(self) -> str:
         """A one-line summary for the evidence log header."""
@@ -176,6 +181,9 @@ def load(path: str | Path) -> Engagement:
     for key in _LIST_KEYS:
         if key in data and not isinstance(data[key], list):
             raise EngagementError(f"{path}: '{key}' must be a list of strings")
+    for key in _BOOL_KEYS:
+        if key in data and not isinstance(data[key], bool):
+            raise EngagementError(f"{path}: '{key}' must be true or false")
     if not data.get("in_scope"):
         raise EngagementError(f"{path}: 'in_scope' is required and must list at least one target")
 
@@ -189,4 +197,5 @@ def load(path: str | Path) -> Engagement:
         out_of_scope=_targets(data.get("out_of_scope", []), "out_of_scope", path),
         starts=_time(data["starts"], "starts", path) if "starts" in data else None,
         ends=_time(data["ends"], "ends", path) if "ends" in data else None,
+        fence_scanning=data.get("fence_scanning", True),
     )

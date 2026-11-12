@@ -72,6 +72,8 @@ tests/
 ├── test_evidence.py             evidence log: hash chain, tamper
 │                                detection, artefact hashes, encrypted
 │                                entries (append while locked)
+├── test_fence.py                the network fence: rules, pasta options,
+│                                no DNS, refusals (live where available)
 ├── test_forensic_rules.py       dc3dd/ewfacquire on images in the project,
 │                                hashed and logged; exiftool only reads
 ├── test_fsutil.py               atomic_write_text() / _bytes()
@@ -172,6 +174,9 @@ tests/
 │                                third parties, ranges, active refused,
 │                                passive asked; nmap scripts judged by
 │                                nmap's script.db
+├── test_scope_fence.py          engagement fence: a scan reaches exactly
+│                                its targets, names resolved per step, raw
+│                                scans refused, fence_scanning = false
 ├── test_scope_web.py            engagement scope for web and TLS tools:
 │                                URL hosts read strictly, proxies, redirects
 │                                and fuzz words in the host refused
