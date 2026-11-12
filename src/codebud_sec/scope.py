@@ -452,8 +452,14 @@ class ScopeGuard:
 
     def _judge(self, step) -> tuple[str | None, str | None]:
         """(refusal, notice) for ``step``."""
+        if step.get("tool") == "web_search":
+            return (
+                "engagement scope: web search sends the query to a third party "
+                "(DuckDuckGo), outside any engagement",
+                None,
+            )
         if step.get("tool") != "command":
-            return None, None
+            return None, None  # file tools and host_network stay on this machine
         from codebud import isolation, privacy
 
         # A step without the network can reach no one -- only if steps really

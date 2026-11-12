@@ -290,3 +290,18 @@ def test_nmap_scripts_that_reach_past_the_command_line_are_refused(guard, cmd):
 )
 def test_ordinary_scripts_run(guard, cmd):
     assert _engine().refusal_reason(_step(cmd)) is None, cmd
+
+
+def test_web_search_is_refused_under_an_engagement(guard):
+    """Re-review of #18: it sends the query to a third party (DuckDuckGo),
+    outside any scope, whatever the web search setting."""
+    reason = _engine().refusal_reason({"tool": "web_search", "args": {"query": "acme vpn"}})
+    assert reason is not None and "engagement" in reason
+
+
+def test_local_tools_are_untouched(guard):
+    for step in (
+        {"tool": "file_read", "args": {"path": "notes.txt"}},
+        {"tool": "host_network", "args": {}},
+    ):
+        assert _engine().refusal_reason(step) is None, step
