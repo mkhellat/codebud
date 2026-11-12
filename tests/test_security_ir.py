@@ -111,3 +111,21 @@ def test_network_steps_are_refused(ir, monkeypatch):
     monkeypatch.setenv("CODEBUD_PRIVACY", "locked")
     step = {"tool": "command", "args": {"cmd": "ps -ef", "network": True}}
     assert "locked" in _engine().refusal_reason(step)
+
+
+@pytest.mark.parametrize(
+    "cmd", ["date -s 2020-01-01", "date --set=2020-01-01", "date --set 2020-01-01"]
+)
+def test_setting_the_clock_is_refused(ir, cmd):
+    """It would falsify every later timestamp of the timeline (review of #16)."""
+    assert _engine().refusal_reason(_step(cmd)) is not None, cmd
+
+
+def test_reading_the_clock_is_fine(ir):
+    assert _engine().refusal_reason(_step("date -u +%s")) is None
+
+
+def test_iso_timestamps_have_an_allowed_spelling(ir):
+    """-Iseconds holds an "s" in a short-option cluster and is refused by
+    the conservative rule; the long spelling does the same and runs."""
+    assert _engine().refusal_reason(_step("date --iso-8601=seconds")) is None

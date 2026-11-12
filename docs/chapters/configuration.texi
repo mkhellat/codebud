@@ -468,7 +468,10 @@ Nothing that deletes, moves, kills, changes permissions or installs is
 on it, and no trusted sequence.
 
 Refused on top of the built-in refusals: @command{tar} extracting,
-appending, updating or deleting (only new archives); @command{sort
+appending, updating or deleting (only new archives); @command{date -s}
+and @option{--set} (setting the clock would falsify every later
+timestamp; @code{date --iso-8601=seconds} reads it --- @code{date
+-Iseconds} is refused by the cautious short-option rule); @command{sort
 -o}; @command{rg --pre}; @command{tcpdump -z}; @command{tshark -X};
 Volatility's @option{--plugin-dirs} (code from a directory).
 
