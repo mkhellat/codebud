@@ -573,6 +573,14 @@ class SafetyEngine:
     # Internal helpers
     # ------------------------------------------------------------------
 
+    def _ruled_programs(self) -> set[str]:
+        """Program names some refusal rule applies to (family names)."""
+        refused = getattr(self, "refused", {})
+        return {
+            "find", "python", "git", *_AWKS, *_SEDS, *_REFUSED_FLOOR,
+            *(_program_name(name) for name in refused),
+        }  # fmt: skip
+
     def _argument_refusal(self, words: list[str]) -> str | None:
         """Why an argument of ``words`` is never allowed, or None."""
         if not words:
@@ -616,10 +624,17 @@ class SafetyEngine:
         catastrophic = catastrophic_reason(cmd)
         if catastrophic:
             return f"{catastrophic} (refused whatever the allow-list says)"
-        # The command and, behind a wrapper (timeout 5, env X=1), the program
-        # the wrapper runs.
-        for judged in dict.fromkeys(map(tuple, (words, _unwrap(words)))):
-            reason = self._argument_refusal(list(judged))
+        # The command, and every later word that names a program with
+        # refusal rules: whatever runs its arguments as a command (timeout,
+        # env, xargs, taskset, flock, strace, ...) is seen through without
+        # listing them (complete mediation). A program named as data
+        # followed by a refused option is refused too: erring that way
+        # costs a rewritten step, the other way a bypass.
+        ruled = self._ruled_programs()
+        for start in range(len(words)):
+            if start and _program_name(words[start]) not in ruled:
+                continue
+            reason = self._argument_refusal(words[start:])
             if reason:
                 return reason
         allowed = (*self.harmless_commands, *self.powerful_commands)

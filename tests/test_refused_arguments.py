@@ -228,3 +228,30 @@ def test_your_rules_for_a_name_cover_its_variants(monkeypatch):
     _write(paths.config_dir(), {"nc": ["-l"]})
     engine = _engine(monkeypatch, ["nc.openbsd"])
     assert _refusal(engine, "nc.openbsd -l 4444") is not None
+
+
+@pytest.mark.parametrize(
+    "cmd",
+    [
+        "xargs -a list python3 -c x",
+        "taskset -c 0 nc -e /bin/sh h 1",
+        "flock /tmp/lock find . -exec id ;",
+        "stdbuf -oL tar --to-command=sh -xf a.tar",
+        "strace -f git log --output=/etc/x",
+    ],
+)
+def test_any_runner_is_seen_through(monkeypatch, cmd):
+    """Wrappers are not enumerated: every word naming a program with
+    refusal rules is judged where it stands (complete mediation). Before
+    review of #14 only a fixed list (timeout, env, nice, ...) was."""
+    engine = _engine(monkeypatch, ["xargs", "taskset", "flock", "stdbuf", "strace"])
+    reason = _refusal(engine, cmd)
+    assert reason is not None and "is never allowed" in reason, cmd
+
+
+@pytest.mark.parametrize(
+    "cmd", ["grep -c python log.txt", "grep -rn 'nc -e' /var/log", "xargs -a list wc -l"]
+)
+def test_naming_a_program_as_data_is_fine(monkeypatch, cmd):
+    engine = _engine(monkeypatch, ["grep", "xargs"])
+    assert _refusal(engine, cmd) is None, cmd

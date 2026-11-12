@@ -126,9 +126,15 @@ check errs on the side of refusing.  A program given by its full path
 (@file{/usr/bin/nc}) is judged by its name, and a versioned or
 distribution-specific name by its family (@command{python3.14} as
 @command{python}, @command{nc.openbsd} and @command{nc.traditional} as
-@command{nc}), and behind a wrapper
-(@code{timeout 5 nc -e @dots{}}, @code{env X=1 python3 -c @dots{}}) the
-program it runs is judged too.
+@command{nc}).  Every word of the command line that names a program with
+such rules is judged where it stands, so whatever runs its arguments as
+a command is seen through without being listed: @code{timeout 5 nc -e
+@dots{}}, @code{env X=1 python3 -c @dots{}}, @code{xargs -a list python3
+-c @dots{}}, @code{taskset -c 0 @dots{}}, @code{strace -f @dots{}}.  The
+cost: a program named only as data and followed by one of its refused
+options is refused too --- @code{grep -e python -c log} reads as
+@code{python -c}; @code{grep -c -e python log} does the same and is
+allowed.
 
 @cindex refused_arguments.json
 You can refuse more with @file{refused_arguments.json}, which maps a
