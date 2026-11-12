@@ -637,6 +637,10 @@ Entries must be plain command words (@samp{git status}, @samp{python3}):
 anything else is dropped with a warning, from every file, since the lists
 are also shown to the model.
 
+A fourth file, @file{refused_arguments.json}, lists options a program
+may never be given.  It works differently: every layer counts, and each
+can only add refusals (@pxref{The Safety Engine}).
+
 All three files must be valid JSON arrays.  If a file is malformed, the
 @code{SafetyEngine} treats that list as empty and logs a warning;
 @command{codebud doctor} validates the files in effect.

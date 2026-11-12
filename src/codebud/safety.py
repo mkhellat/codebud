@@ -105,6 +105,81 @@ def _python_runs_inline_code(args: list[str]) -> bool:
     return False
 
 
+# Options that make a program run another program or destroy data,
+# refused whatever the allow-lists say. refused_arguments.json files can
+# add to this (policy.refused_arguments), never take from it.
+_REFUSED_FLOOR = {
+    "nc": {"-e", "-c", "--exec", "--sh-exec", "--lua-exec"},
+    "ncat": {"-e", "-c", "--exec", "--sh-exec", "--lua-exec"},
+    "netcat": {"-e", "-c"},
+    "tar": {
+        "--to-command", "-I", "--use-compress-program", "--checkpoint-action",
+        "-F", "--info-script", "--new-volume-script", "--rmt-command", "--rsh-command",
+    },
+    "rsync": {"-e", "--rsh"},
+    "sort": {"--compress-program"},
+    "journalctl": {"--rotate", "--vacuum-*", "--flush", "--relinquish-var", "--sync"},
+    # env -S splits one word into a whole command line, out of sight.
+    "env": {"-S", "--split-string"},
+}  # fmt: skip
+# Programs that append arguments read from a file or stdin: what they give
+# a program with refusal rules cannot be checked.
+_ARGUMENT_FEEDERS = {"xargs", "parallel"}
+
+
+# Versioned or distribution-specific names of programs with refusal rules:
+# python3.14 is python, nc.openbsd and nc.traditional are nc.
+_NAME_FAMILIES = ((re.compile(r"^python[0-9.]*$"), "python"), (re.compile(r"^nc\..+$"), "nc"))
+
+
+def _program_name(word: str) -> str:
+    """The name refusal rules know ``word`` by: its last path component,
+    with version and distribution suffixes folded into the family."""
+    name = word.rsplit("/", 1)[-1]
+    for pattern, family in _NAME_FAMILIES:
+        if pattern.match(name):
+            return family
+    return name
+
+
+def _option_matches(arg: str, pattern: str) -> bool:
+    """Whether the argument ``arg`` is the option ``pattern``, the way
+    programs parse options: --opt, --opt=value and any abbreviation of
+    --opt; -o, -ovalue and -o in a cluster of short options (-vo); -iR and
+    -iRvalue; prefix* patterns."""
+    stem = pattern[:-1] if pattern.endswith("*") else pattern
+    if arg.startswith("--") and stem.startswith("--"):
+        # getopt_long and argparse accept any unambiguous prefix of a long
+        # option (tar --to-com=sh is --to-command=sh); an ambiguous one the
+        # program rejects itself, so refusing every prefix is safe.
+        name = arg.split("=", 1)[0]
+        if len(name) > 2 and stem.startswith(name):
+            return True
+    if pattern.endswith("*"):
+        return arg.startswith(stem)
+    if pattern.startswith("--"):
+        return arg == pattern or arg.startswith(pattern + "=")
+    if len(pattern) == 2:
+        # -e, -ve, -e/bin/sh: any short option word holding the letter. This
+        # can refuse a cluster where the letter is in fact another option's
+        # value (-w5e): refusing too much is the safe side.
+        return arg.startswith("-") and not arg.startswith("--") and pattern[1] in arg[1:]
+    return arg.startswith(pattern)
+
+
+def refused_option(args: list[str], patterns) -> str | None:
+    """The first argument in ``args`` that is one of the refused option
+    ``patterns``, or None. Words after "--" are operands, not options."""
+    for arg in args:
+        if arg == "--":
+            return None
+        if arg.startswith("-") and len(arg) > 1:
+            for pattern in patterns:
+                if _option_matches(arg, pattern):
+                    return arg
+    return None
+
+
 def _forbidden_argument(words: list[str]) -> str | None:
     """Return the argument of ``words`` this policy always refuses, if any."""
     program, args = words[0], words[1:]
@@ -420,6 +495,7 @@ class SafetyEngine:
         self.harmless_commands = effective.harmless
         self.powerful_commands = effective.powerful
         self.trusted_sequences = effective.sequences
+        self.refused = policy.refused_arguments()
 
     # ------------------------------------------------------------------
     # Public API
@@ -502,6 +578,37 @@ class SafetyEngine:
     # Internal helpers
     # ------------------------------------------------------------------
 
+    def _ruled_programs(self) -> set[str]:
+        """Program names some refusal rule applies to (family names)."""
+        refused = getattr(self, "refused", {})
+        return {
+            "find", "python", "git", *_AWKS, *_SEDS, *_REFUSED_FLOOR,
+            *(_program_name(name) for name in refused),
+        }  # fmt: skip
+
+    def _argument_refusal(self, words: list[str]) -> str | None:
+        """Why an argument of ``words`` is never allowed, or None."""
+        if not words:
+            return None
+        shown = words[0].rsplit("/", 1)[-1]  # the name as written, for the message
+        program = _program_name(words[0])  # /usr/bin/find -> find, python3.14 -> python
+        args = list(words[1:])
+        forbidden = _forbidden_argument([program, *args])
+        if forbidden:
+            return f"{shown} {forbidden} is never allowed (it can run or delete anything)"
+        if program == "tar" and args and not args[0].startswith("-"):
+            # tar's old style: a dash-less first argument is a cluster of
+            # options (tar cIf a.tar . is tar -c -I -f).
+            args[0] = "-" + args[0]
+        floor = refused_option(args, _REFUSED_FLOOR.get(program, ()))
+        if floor:
+            return f"{shown} {floor} is never allowed (it can run or delete anything)"
+        refused = getattr(self, "refused", {})
+        added = refused_option(args, {*refused.get(program, ()), *refused.get(shown, ())})
+        if added:
+            return f"{shown} {added} is never allowed (refused_arguments.json)"
+        return None
+
     def _command_refusal(self, cmd: str) -> str | None:
         """
         Judge a shell command against the harmless/powerful lists.
@@ -522,9 +629,29 @@ class SafetyEngine:
         catastrophic = catastrophic_reason(cmd)
         if catastrophic:
             return f"{catastrophic} (refused whatever the allow-list says)"
-        forbidden = _forbidden_argument(words)
-        if forbidden:
-            return f"{words[0]} {forbidden} is never allowed (it can run or delete anything)"
+        # The command, and every later word that names a program with
+        # refusal rules: whatever runs its arguments as a command (timeout,
+        # env, xargs, taskset, flock, strace, ...) is seen through without
+        # listing them (complete mediation). A program named as data
+        # followed by a refused option is refused too: erring that way
+        # costs a rewritten step, the other way a bypass.
+        ruled = self._ruled_programs()
+        feeder = None
+        for start in range(len(words)):
+            name = _program_name(words[start])
+            if start and name not in ruled:
+                feeder = feeder or (name if name in _ARGUMENT_FEEDERS else None)
+                continue
+            if start and feeder:
+                return (
+                    f"{words[start]} run by {feeder} is never allowed: {feeder} adds "
+                    "arguments from a file or input, which cannot be checked"
+                )
+            reason = self._argument_refusal(words[start:])
+            if reason:
+                return reason
+            if not start and name in _ARGUMENT_FEEDERS:
+                feeder = name
         allowed = (*self.harmless_commands, *self.powerful_commands)
         if not any(_starts_with_words(words, entry) for entry in allowed):
             return (

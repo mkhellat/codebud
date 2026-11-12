@@ -143,6 +143,8 @@ tests/
 │                                tag, NEWS date, lint, every failure listed
 ├── test_release_sign.py         make release-sign: .sig and .sha256 with a
 │                                throwaway key in a private GNUPGHOME
+├── test_refused_arguments.py    refused options: floor, matching (--opt=,
+│                                clusters, tar old style), wrappers, layers
 ├── test_remote_ollama.py        remote Ollama: https notice, plain http
 │                                refused unless allowed
 ├── test_safety_awk_sed.py       awk/sed forms that run programs or write

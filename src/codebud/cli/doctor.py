@@ -319,7 +319,17 @@ def check_config_files() -> CheckResult:
     from codebud.policy import POLICY_FILES as names
 
     project = [p for p in (project_policy_file(n) for n in names) if p is not None]
-    for path in [user_policy_file(n) for n in names] + project:
+    from codebud import paths
+    from codebud.policy import REFUSED_FILE
+
+    # refused_arguments.json: optional in every layer; a damaged one would
+    # silently stop adding its refusals.
+    refused = [
+        Path(d) / REFUSED_FILE
+        for d in (paths.PROFILE_POLICY_DIR, paths.config_dir(), paths.project_config_dir())
+        if d is not None and (Path(d) / REFUSED_FILE).is_file()
+    ]
+    for path in [user_policy_file(n) for n in names] + project + refused:
         if path is None:
             continue
         if not path.exists():

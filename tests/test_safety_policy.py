@@ -240,3 +240,26 @@ def test_confirmation_reasons():
     )
     assert engine.confirmation_reason({"tool": "command", "args": {"cmd": "ls"}}) is None
     assert engine.confirmation_reason({"tool": "file_read", "args": {"path": "a"}}) is None
+
+
+@pytest.mark.parametrize(
+    "cmd",
+    [
+        "timeout 5 python3 -c 'print(1)'",
+        "env X=1 python3 -c 'print(1)'",
+        "nice find . -exec rm {} ;",
+        "/usr/bin/find . -exec id ;",
+        "/usr/bin/python3 -c 'print(1)'",
+    ],
+)
+def test_refused_arguments_hold_behind_wrappers_and_full_paths(cmd):
+    """They used to judge only the first word: an allowed wrapper (timeout,
+    env, nice) or a program given by its full path got past find -exec and
+    python -c."""
+    from codebud.safety import SafetyEngine
+
+    engine = SafetyEngine()
+    engine.harmless_commands = []
+    engine.powerful_commands = ["timeout", "env", "nice", "/usr/bin/find", "/usr/bin/python3"]
+    reason = engine.refusal_reason({"tool": "command", "args": {"cmd": cmd}})
+    assert reason is not None and "is never allowed" in reason, cmd

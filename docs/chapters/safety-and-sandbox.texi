@@ -99,7 +99,70 @@ a @code{print} piped to one
 command (runs a shell command), and @code{w}, @code{W} or the @code{s///w}
 flag (write a file); the script is parsed so an ordinary @code{w} inside a
 substitution is not refused
+@item @command{nc}, @command{ncat}, @command{netcat} @tab @option{-e},
+@option{-c}, @option{--exec}, @option{--sh-exec}, @option{--lua-exec}
+(run a program on the connection)
+@item @command{tar} @tab @option{--to-command}, @option{-I},
+@option{--use-compress-program}, @option{--checkpoint-action},
+@option{-F}, @option{--info-script}, @option{--new-volume-script},
+@option{--rmt-command}, @option{--rsh-command} (run programs)
+@item @command{rsync} @tab @option{-e}, @option{--rsh} (run a program)
+@item @command{sort} @tab @option{--compress-program} (runs a program)
+@item @command{journalctl} @tab @option{--rotate}, @option{--vacuum-*},
+@option{--flush}, @option{--relinquish-var}, @option{--sync} (change or
+delete logs)
+@item @command{env} @tab @option{-S}, @option{--split-string} (turns one
+argument into a whole command line, out of sight)
 @end multitable
+
+These are matched the way the programs parse their options:
+@option{--opt} and @option{--opt=@var{value}}, and any abbreviation of
+a long option, which GNU programs accept (@option{--to-com} is
+@option{--to-command}); a short option alone, with
+its value attached (@option{-e/bin/sh}) or among others
+(@option{-ve}); nothing after @option{--}; and @command{tar}'s old style,
+where a first argument without a dash is a group of options
+(@code{tar cIf} is @code{tar -c -I -f}).  A short option found inside a
+group is refused even where it is in fact another option's value: the
+check errs on the side of refusing.  A program given by its full path
+(@file{/usr/bin/nc}) is judged by its name, and a versioned or
+distribution-specific name by its family (@command{python3.14} as
+@command{python}, @command{nc.openbsd} and @command{nc.traditional} as
+@command{nc}).  Every word of the command line that names a program with
+such rules is judged where it stands, so whatever runs its arguments as
+a command is seen through without being listed: @code{timeout 5 nc -e
+@dots{}}, @code{env X=1 python3 -c @dots{}}, @code{xargs -a list python3
+-c @dots{}}, @code{taskset -c 0 @dots{}}, @code{strace -f @dots{}}.  The
+cost: a program named only as data and followed by one of its refused
+options is refused too --- @code{grep -e python -c log} reads as
+@code{python -c}; @code{grep -c -e python log} does the same and is
+allowed.  A program with such rules run by @command{xargs} or
+@command{parallel} is refused outright: they add arguments read from a
+file or from input, which cannot be checked (@code{xargs -a files.txt
+wc -l} is fine).
+
+@cindex refused_arguments.json
+You can refuse more with @file{refused_arguments.json}, which maps a
+program to the options it may never be given:
+
+@example
+@{
+  "curl": ["-T", "--upload-file"],
+  "nmap": ["-iR", "--script-args-file"],
+  "journalctl": ["--vacuum-*"]
+@}
+@end example
+
+@noindent
+Every such file in force counts: the active profile's policy directory,
+your @file{~/.config/codebud/} and the project's @file{.codebud/} are
+combined, and each can only add refusals --- none can remove one,
+including those in the table above.  A project needs no trust for it,
+since adding refusals only narrows.  An entry that is not a program name
+and a list of options (@samp{-x}, @samp{--long}, @samp{--prefix-*}) is
+ignored with a warning, and @command{codebud doctor} fails on a file
+that is not valid JSON.  What it cannot cover: a program that reads its
+options from a configuration file or the environment.
 
 When a step fails validation the entire plan is rejected and the agent
 never executes a partial plan.  A rejection caused only by the agent mode
