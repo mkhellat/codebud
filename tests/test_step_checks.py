@@ -71,3 +71,53 @@ def test_a_crashing_check_refuses_rather_than_lets_through():
     safety.add_step_check(broken)
     reason = _engine().refusal_reason(_step("ls"))
     assert reason is not None and "check failed" in reason
+
+
+# --- a profile that needs an engagement (step 5 plan, PR 5) ------------------------
+
+
+@pytest.fixture
+def engagement_profile(monkeypatch):
+    from codebud import profiles
+
+    monkeypatch.setattr(profiles, "_active", profiles.Profile("pentest", engagement=True))
+
+
+def test_an_engagement_profile_refuses_network_tools_without_one(engagement_profile):
+    """Without the scope check of an open engagement, nothing reads which
+    hosts a step reaches: commands and web searches are refused."""
+    engine = _engine()
+    for step in (_step("nmap 10.0.0.1"), _step("ls"), {"tool": "web_search", "args": {}}):
+        reason = engine.refusal_reason(step)
+        assert reason is not None and "engagement" in reason, step
+    assert engine.refusal_reason({"tool": "file_read", "args": {"path": "notes.txt"}}) is None
+
+
+def test_a_check_that_provides_the_engagement_lifts_it(engagement_profile):
+    def scope(step):
+        return None
+
+    safety.add_step_check(scope, provides="engagement")
+    assert _engine().refusal_reason(_step("nmap 10.0.0.1")) is None
+    safety.remove_step_check(scope)
+    assert _engine().refusal_reason(_step("nmap 10.0.0.1")) is not None
+
+
+def test_another_check_does_not_lift_it(engagement_profile):
+    safety.add_step_check(lambda step: None)
+    safety.add_step_check(lambda step: None, provides="something else")
+    assert _engine().refusal_reason(_step("nmap 10.0.0.1")) is not None
+
+
+def test_other_profiles_need_no_engagement():
+    assert _engine().refusal_reason(_step("nmap 10.0.0.1")) is None
+
+
+def test_the_profile_key_is_read(tmp_path):
+    from codebud import profiles
+
+    (tmp_path / "p.toml").write_text("engagement = true\n")
+    assert profiles._load_file("p", tmp_path / "p.toml").engagement is True
+    (tmp_path / "q.toml").write_text('engagement = "yes"\n')
+    with pytest.raises(profiles.ProfileError):
+        profiles._load_file("q", tmp_path / "q.toml")

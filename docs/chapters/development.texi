@@ -163,11 +163,15 @@ tests/
 │                                egress rule, bad entries, sources
 ├── test_security_ir.py          security-ir: settings, what triage may run,
 │                                what would change the host is refused
+├── test_security_pentest.py     security-pentest: nothing without an
+│                                engagement; recon in scope runs, beyond
+│                                scanning is refused
 ├── test_shipped_profiles.py     profiles of codebud_sec: found by name
 │                                beside codebud, not imported, not shadowed
 ├── test_scope.py                engagement scope: targets read per tool,
 │                                third parties, ranges, active refused,
-│                                passive asked
+│                                passive asked; nmap scripts judged by
+│                                nmap's script.db
 ├── test_scope_web.py            engagement scope for web and TLS tools:
 │                                URL hosts read strictly, proxies, redirects
 │                                and fuzz words in the host refused

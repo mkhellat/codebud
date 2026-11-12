@@ -75,6 +75,16 @@ a safety policy you can read and change.
   Imaging tools work on image files in the project only, hashed and
   logged (dc3dd, ewfacquire), and exiftool may only read.
 
+  security-pentest, reconnaissance and scanning inside an engagement:
+  it runs no command until an engagement is open, and the engagement's
+  scope guard reads every target of dig, host, whois, nmap, masscan,
+  nc, curl, wget, whatweb, nikto, gobuster, ffuf, feroxbuster, sslscan
+  and testssl.sh -- out of scope is refused.  nmap scripts are judged by
+  nmap's own script database (no exploit, brute, dos, intrusive or
+  external ones); redirects are never followed; no listeners, no
+  exploitation tools, no files sent to a target.  A profile requires an
+  engagement with engagement = true.
+
   A profile can ask for observer isolation (isolation = "observer"):
   command steps see the host's processes through a read-only /proc,
   for live triage, but still cannot signal them or reach the network.

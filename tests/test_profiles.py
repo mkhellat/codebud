@@ -28,7 +28,7 @@ def test_builtins():
     assert profiles.get("default").summary() == "ask, privacy private"
     assert profiles.get("unattended").summary() == "full-auto, privacy trusted"
     # The built-ins, and the security layer's shipped profiles.
-    assert profiles.available() == ["default", "security-ir", "unattended"]
+    assert profiles.available() == ["default", "security-ir", "security-pentest", "unattended"]
 
 
 def test_user_profile_is_loaded_with_its_policy_and_prompt(tmp_path):

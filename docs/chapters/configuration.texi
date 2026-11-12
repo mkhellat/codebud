@@ -488,6 +488,50 @@ done by you, outside Codebud, with a write-blocker where it applies
 (NIST SP 800-86 advises against imaging a whole device from a live
 system); Codebud analyses the images, and re-images or converts them
 (raw to E01) only as files inside the project.
+
+@item security-pentest
+Reconnaissance and scanning of hosts an engagement authorizes, the
+first two tiers of a penetration test (NIST SP 800-115): no
+exploitation, no password guessing, no denial of service.  Its
+settings: mode @code{ask}; privacy @code{private} (@code{locked} would
+refuse every network step); encryption at rest on; an integrity
+manifest required; and @code{engagement = true}, so it runs no command
+and no web search until an engagement is open.  The engagement's scope
+guard then reads every host a network step will contact --- targets,
+proxies, DNS servers, addresses given to @command{curl --resolve} ---
+and refuses the step when one is out of scope, excluded, or the
+engagement window is closed.  A command it cannot read (an unknown
+option, a target list outside the project, an ambiguous URL) is refused
+too.
+
+Its allow-list: reading results runs once the plan is approved
+(@command{cat}, @command{grep}, @command{rg}, @command{jq},
+@command{diff}, hashes, @dots{}); every network tool is powerful and
+asked for every time --- @command{dig}, @command{host}, @command{whois},
+@command{nmap}, @command{masscan}, @command{nc}, @command{ncat},
+@command{curl}, @command{wget}, @command{whatweb}, @command{nikto},
+@command{gobuster}, @command{ffuf}, @command{feroxbuster},
+@command{sslscan} and @command{testssl.sh}.
+
+What the scope guard refuses beyond out-of-scope targets: nmap scripts
+that nmap's own database marks exploit, brute, dos, intrusive, fuzzer,
+broadcast or external, worked out from the whole @option{--script}
+expression --- nmap's @code{default} category holds two external
+scripts, so @option{-sC} and @option{-A} are refused; use
+@code{--script "default and not external"} (@option{-sV} is allowed,
+though nmap marks one version script, @code{iec61850-mms}, intrusive);
+following redirects (@command{curl -L}; @command{wget} needs
+@option{--max-redirect=0} and @command{whatweb}
+@option{--follow-redirect=never}); a fuzzing keyword anywhere but the
+path; @command{masscan} faster than 1000 packets a second;
+@command{nikto} without @option{-Tuning} leaving out class 6, its
+denial-of-service tests (@code{-Tuning x6}); @command{nmap
+--datadir}, which would load scripts from elsewhere; sending a file to
+a target (@command{curl -T}, @code{-d @@file}, @command{wget
+--post-file}, @command{feroxbuster --data @@file}); environment
+assignments in front of a network tool (@code{env HTTPS_PROXY=@dots{}}).  The profile itself refuses
+listeners (@command{nc -l}, @command{ncat --listen}), which catch
+shells.
 @end table
 
 @subheading Your own profiles
@@ -507,6 +551,7 @@ prompt = "Never modify files under tests/."
 encrypt = true                # turn encryption at rest on
 integrity = true              # refuse to start without a pinned manifest
 isolation = "observer"        # steps see the host's processes (read-only)
+engagement = true             # commands only inside an open engagement
 @end example
 
 @noindent
@@ -523,6 +568,11 @@ or level that does not exist, a missing policy directory --- is refused
 with a message rather than half applied.  A project cannot define or
 choose a profile, since a profile can lower the privacy level.  @code{isolation = "observer"} runs command steps with the host's
 processes in view, for live triage (@pxref{Isolated Steps}).
+@code{engagement = true} refuses every command and web search step
+unless an engagement is open, so that the security layer's scope check
+reads the hosts each step reaches; reading and writing files still
+works.  It is for profiles whose tools reach other hosts, such as
+@code{security-pentest}.
 
 
 @node Isolated Steps

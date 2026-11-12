@@ -226,7 +226,11 @@ registers a function that may refuse a step, and
 engine asks them after its own rules, for every step and again right
 before it runs, without knowing what they are; a check that fails with
 an error refuses the step.  The security layer's engagement scope guard
-is registered this way, so the core never imports that layer.
+is registered this way, so the core never imports that layer.  A check
+can say what it @emph{provides} (@code{add_step_check(check,
+provides="engagement")}), and a profile with @code{engagement = true}
+refuses command and web search steps while no registered check provides
+an engagement (@pxref{Profiles}).
 
 @code{describe_rules()} returns a compact summary of the three policy
 lists, which is embedded in the planner prompt so the model can avoid
