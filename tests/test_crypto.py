@@ -161,3 +161,64 @@ def test_while_unlocked_writes_use_the_key_not_the_file(unlocked):
     (crypto.key_dir() / crypto.RECIPIENT_FILE).write_text(str(stranger.to_public()) + "\n")
     sealed = crypto.encrypt(b"mine")
     assert crypto.decrypt(sealed) == b"mine"  # encrypted to my key, not the stranger's
+
+
+# --- age refusing a correct passphrase on a slow moment ---------------------------
+
+
+def _excessive_then(real, times):
+    """pyrage.passphrase.decrypt that refuses ``times`` times the way age
+    does when the machine is slower than when the key was sealed, then
+    works."""
+    import pyrage
+
+    calls = []
+
+    def decrypt(data, passphrase):
+        calls.append(1)
+        if len(calls) <= times:
+            raise pyrage.DecryptError("Excessive work parameter for passphrase.")
+        return real(data, passphrase)
+
+    return decrypt, calls
+
+
+def test_a_slow_moment_is_retried(monkeypatch):
+    """age calibrates its passphrase work factor to the machine's speed when
+    sealing, and refuses one far above the current speed when opening: on a
+    loaded machine a correct passphrase was reported as wrong (seen on
+    macOS CI)."""
+    import pyrage
+
+    crypto.create_key("correct horse")
+    crypto.lock()
+    decrypt, calls = _excessive_then(pyrage.passphrase.decrypt, 2)
+    monkeypatch.setattr(pyrage.passphrase, "decrypt", decrypt)
+    crypto.unlock("correct horse")
+    assert len(calls) == 3
+
+
+def test_a_persistent_refusal_is_not_called_a_wrong_passphrase(monkeypatch):
+    import pyrage
+
+    crypto.create_key("correct horse")
+    crypto.lock()
+    decrypt, _ = _excessive_then(pyrage.passphrase.decrypt, 99)
+    monkeypatch.setattr(pyrage.passphrase, "decrypt", decrypt)
+    with pytest.raises(crypto.CryptoError) as exc:
+        crypto.unlock("correct horse")
+    assert "wrong passphrase" not in str(exc.value)
+    assert "slower" in str(exc.value)
+
+
+def test_a_wrong_passphrase_is_still_wrong_and_not_retried(monkeypatch):
+    import pyrage
+
+    crypto.create_key("correct horse")
+    crypto.lock()
+    calls = []
+    real = pyrage.passphrase.decrypt
+    monkeypatch.setattr(pyrage.passphrase, "decrypt", lambda d, p: calls.append(1) or real(d, p))
+    with pytest.raises(crypto.CryptoError, match="wrong passphrase"):
+        crypto.unlock("wrong horse")
+    assert len(calls) == 1

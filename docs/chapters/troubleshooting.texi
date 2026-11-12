@@ -14,6 +14,7 @@ their root causes, and how to fix them.
 * Safety Rejection::                A plan step is blocked by the safety engine.
 * Invalid Plan::                    Steps miss arguments their tools need.
 * Index Built With Another Model::  EMBED_MODEL changed since indexing.
+* Key Refused on a Slow Moment::    A right passphrase, refused while busy.
 * Web Search Returns No Results::   The DuckDuckGo scraper finds nothing.
 * Tests Cannot Import codebud::     The package is not on the path.
 @end menu
@@ -315,6 +316,35 @@ earlier default, @code{nomic-embed-text}.
 codebud index --rebuild
 @end example
 
+
+@node Key Refused on a Slow Moment
+@section Key Refused on a Slow Moment
+@cindex passphrase refused
+@cindex excessive work parameter
+
+@example
+codebud: this machine was slower just now than when the key was sealed,
+and age refuses a passphrase it estimates would take too long to check
+here; the passphrase may well be right -- try again, ideally with the
+machine less busy
+@end example
+
+@noindent
+@strong{What happened:} age, which seals your encryption key, sets the
+passphrase's work factor (how long checking it takes) from the
+machine's speed when the key was made, and on every unlock measures
+the speed again and refuses a work factor far above it.  On a busy
+or throttled moment --- a heavy build, a laptop on battery --- a correct
+passphrase can be refused.  Codebud tries three times before saying
+so, and never reports it as a wrong passphrase.
+
+@strong{Fix:} try again when the machine is less busy.  A key sealed on
+a much faster machine and moved to a slow one may be refused every
+time, and @command{codebud key passwd} cannot help, since it seals the
+key again for the speed of the machine it runs on.  Use the key on a
+machine at least as fast as the one it was made on; or create a new key
+on the slow machine with @command{codebud key init} --- data encrypted
+to the old key stays readable only with the old key.
 
 @node Web Search Returns No Results
 @section Web Search Returns No Results
