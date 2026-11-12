@@ -119,7 +119,12 @@ _REFUSED_FLOOR = {
     "rsync": {"-e", "--rsh"},
     "sort": {"--compress-program"},
     "journalctl": {"--rotate", "--vacuum-*", "--flush", "--relinquish-var", "--sync"},
+    # env -S splits one word into a whole command line, out of sight.
+    "env": {"-S", "--split-string"},
 }  # fmt: skip
+# Programs that append arguments read from a file or stdin: what they give
+# a program with refusal rules cannot be checked.
+_ARGUMENT_FEEDERS = {"xargs", "parallel"}
 
 
 # Versioned or distribution-specific names of programs with refusal rules:
@@ -631,12 +636,22 @@ class SafetyEngine:
         # followed by a refused option is refused too: erring that way
         # costs a rewritten step, the other way a bypass.
         ruled = self._ruled_programs()
+        feeder = None
         for start in range(len(words)):
-            if start and _program_name(words[start]) not in ruled:
+            name = _program_name(words[start])
+            if start and name not in ruled:
+                feeder = feeder or (name if name in _ARGUMENT_FEEDERS else None)
                 continue
+            if start and feeder:
+                return (
+                    f"{words[start]} run by {feeder} is never allowed: {feeder} adds "
+                    "arguments from a file or input, which cannot be checked"
+                )
             reason = self._argument_refusal(words[start:])
             if reason:
                 return reason
+            if not start and name in _ARGUMENT_FEEDERS:
+                feeder = name
         allowed = (*self.harmless_commands, *self.powerful_commands)
         if not any(_starts_with_words(words, entry) for entry in allowed):
             return (

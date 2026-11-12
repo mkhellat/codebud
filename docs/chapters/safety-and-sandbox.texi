@@ -111,6 +111,8 @@ substitution is not refused
 @item @command{journalctl} @tab @option{--rotate}, @option{--vacuum-*},
 @option{--flush}, @option{--relinquish-var}, @option{--sync} (change or
 delete logs)
+@item @command{env} @tab @option{-S}, @option{--split-string} (turns one
+argument into a whole command line, out of sight)
 @end multitable
 
 These are matched the way the programs parse their options:
@@ -134,7 +136,10 @@ a command is seen through without being listed: @code{timeout 5 nc -e
 cost: a program named only as data and followed by one of its refused
 options is refused too --- @code{grep -e python -c log} reads as
 @code{python -c}; @code{grep -c -e python log} does the same and is
-allowed.
+allowed.  A program with such rules run by @command{xargs} or
+@command{parallel} is refused outright: they add arguments read from a
+file or from input, which cannot be checked (@code{xargs -a files.txt
+wc -l} is fine).
 
 @cindex refused_arguments.json
 You can refuse more with @file{refused_arguments.json}, which maps a
