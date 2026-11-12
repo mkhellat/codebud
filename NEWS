@@ -72,6 +72,8 @@ a safety policy you can read and change.
   A profile can ask for observer isolation (isolation = "observer"):
   command steps see the host's processes through a read-only /proc,
   for live triage, but still cannot signal them or reach the network.
+  Such a profile also gets the host_network tool: the host's sockets
+  (with their processes), routes and ARP table, read from /proc.
 
   More options are refused whatever the allow-list says (nc -e, tar
   --to-command, rsync -e, journalctl --vacuum-*, ...), also behind

@@ -86,6 +86,8 @@ tests/
 │                                tool) checked before running; project files
 ├── test_isolation_observer.py   observer isolation: host processes seen,
 │                                not signalled, no network, no environments
+├── test_host_network.py         host_network: /proc/1/net decoded, sockets
+│                                to processes, offered only to observers
 ├── test_isolation.py            bubblewrap isolation (live where available),
 │                                network steps, no-isolation fallbacks
 ├── test_key_cli.py             codebud key init/passwd/status, passphrase

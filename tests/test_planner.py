@@ -29,6 +29,7 @@ def _make_registry(tool_names=None):
         f"- {n}: a tool\n  When to use: use me" for n in tool_names
     )
     reg.has.side_effect = lambda n: n in tool_names
+    reg.names.return_value = list(tool_names)
     return reg
 
 
