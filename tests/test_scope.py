@@ -146,7 +146,7 @@ def test_tools_are_found_behind_wrappers_and_by_variant_name():
 def _engine():
     engine = SafetyEngine()
     engine.harmless_commands = ["dig", "host", "ls"]
-    engine.powerful_commands = ["nmap", "masscan", "nc", "ncat", "timeout", "curl"]
+    engine.powerful_commands = ["nmap", "masscan", "nc", "ncat", "timeout", "socat"]
     return engine
 
 
@@ -204,7 +204,7 @@ def test_passive_lookups_out_of_scope_ask_instead(guard):
 
 
 def test_an_unparsed_network_tool_is_refused(guard):
-    reason = _engine().refusal_reason(_step("curl https://app.example.com/"))
+    reason = _engine().refusal_reason(_step("socat - TCP:app.example.com:80"))
     assert reason is not None and "cannot read its targets" in reason
 
 

@@ -168,6 +168,9 @@ tests/
 ├── test_scope.py                engagement scope: targets read per tool,
 │                                third parties, ranges, active refused,
 │                                passive asked
+├── test_scope_web.py            engagement scope for web and TLS tools:
+│                                URL hosts read strictly, proxies, redirects
+│                                and fuzz words in the host refused
 ├── test_skill.py                SKILL.md variants (default, Agensi), skill CLI
 ├── test_step_environment.py    steps never see the passphrase or secret
 │                                settings (any privacy level)
