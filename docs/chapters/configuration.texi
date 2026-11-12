@@ -428,10 +428,22 @@ starts (unless it is @code{default}), shown in the chat toolbar and
 recorded in the session file; like the privacy level, a resumed session
 does not bring its profile back.
 
+@subheading Profiles of the security layer
+@cindex security profiles, shipped
+
+The security layer (@file{codebud_sec}, part of the Codebud
+distribution) ships profiles of its own in its @file{data/profiles/}.
+Codebud finds them by that exact package name, without running any of
+its code, and only when it is installed alongside Codebud itself, so
+another package of that name elsewhere on the Python path is ignored.
+They are listed by @command{codebud profiles} like the built-in ones.
+
 @subheading Your own profiles
 
 A profile is a TOML file, @file{~/.config/codebud/profiles/@var{name}.toml}
-(@env{XDG_CONFIG_HOME}); one named like a built-in replaces it.  Every
+(@env{XDG_CONFIG_HOME}); one named like a built-in replaces it, but
+one named like a profile of the security layer is refused, so a stray
+or planted file cannot weaken it --- give yours another name.  Every
 key is optional:
 
 @example

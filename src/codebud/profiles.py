@@ -20,8 +20,12 @@ named bundle of the two dials and what goes with them:
             (integrity.py); with one, it is checked whatever the profile
 
 Built in: "default" (ask, private) and "unattended" (full-auto, trusted).
-Your own live in $XDG_CONFIG_HOME/codebud/profiles/<name>.toml; a project
-cannot define or choose one, since a profile can lower the privacy level.
+The security layer, codebud_sec, ships more in its data/profiles/: they
+are found by that exact package name, without importing it, and only
+when it is installed alongside codebud. Your own live in
+$XDG_CONFIG_HOME/codebud/profiles/<name>.toml and cannot take a shipped
+profile's name; a project cannot define or choose one, since a profile
+can lower the privacy level.
 
 Choose with --profile, `/profile` in chat, CODEBUD_PROFILE or `profile =`
 in your config.toml. An explicit --privacy, --mode, --yes or
@@ -91,6 +95,32 @@ def profile_dir() -> Path:
     return paths.config_dir() / PROFILE_DIR
 
 
+def shipped_profile_dir() -> Path | None:
+    """codebud_sec's data/profiles/, or None. Found by the exact package
+    name with importlib.util.find_spec, which does not import it, and only
+    when it sits beside codebud itself (the same site directory or source
+    tree): another codebud_sec elsewhere on the path is not the layer."""
+    import importlib.util
+
+    try:
+        spec = importlib.util.find_spec("codebud_sec")
+    except (ImportError, ValueError):
+        return None
+    if spec is None or not spec.origin:
+        return None
+    layer = Path(spec.origin).resolve().parent
+    if layer.parent != Path(__file__).resolve().parent.parent:
+        return None
+    directory = layer / "data" / PROFILE_DIR
+    return directory if directory.is_dir() else None
+
+
+def _shipped(name: str) -> Path | None:
+    directory = shipped_profile_dir()
+    path = directory / f"{name}.toml" if directory is not None else None
+    return path if path is not None and path.is_file() else None
+
+
 def _load_file(name: str, path: Path) -> Profile:
     try:
         data = tomllib.loads(path.read_text())
@@ -142,8 +172,17 @@ def get(name: str) -> Profile:
     if not _NAME.match(name):
         raise ProfileError(f"'{name}' is not a valid profile name (a-z, 0-9, '-', '_')")
     path = profile_dir() / f"{name}.toml"
+    shipped = _shipped(name)
+    if shipped is not None and path.is_file():
+        # A stray or planted file must not quietly weaken a shipped profile.
+        raise ProfileError(
+            f"profile {name} ships with codebud's security layer; your {path} would "
+            "replace it -- give your file another name"
+        )
     if path.is_file():
         return _load_file(name, path)
+    if shipped is not None:
+        return _load_file(name, shipped)
     if name in BUILTIN:
         return BUILTIN[name]
     raise ProfileError(f"no profile '{name}' (choose one of: {', '.join(available())})")
@@ -151,6 +190,9 @@ def get(name: str) -> Profile:
 
 def available() -> list[str]:
     names = set(BUILTIN)
+    shipped = shipped_profile_dir()
+    if shipped is not None:
+        names |= {p.stem for p in shipped.glob("*.toml") if _NAME.match(p.stem)}
     if profile_dir().is_dir():
         names |= {p.stem for p in profile_dir().glob("*.toml") if _NAME.match(p.stem)}
     return sorted(names)
