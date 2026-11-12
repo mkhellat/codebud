@@ -75,6 +75,7 @@ where = ["src"]
 
 [tool.setuptools.package-data]
 codebud = ["data/policy/*.json", "data/skill/SKILL.md", "data/skill/agensi/SKILL.md"]
+codebud_sec = ["data/profiles/*.toml", "data/profiles/*/*.json"]
 
 [build-system]
 requires = ["setuptools>=77"]  # 77: PEP 639 license expressions

@@ -438,6 +438,51 @@ its code, and only when it is installed alongside Codebud itself, so
 another package of that name elsewhere on the Python path is ignored.
 They are listed by @command{codebud profiles} like the built-in ones.
 
+@table @code
+@item security-ir
+Incident response and forensics on hosts you own or are authorized to
+examine: live triage that sees the host and changes nothing on it, and
+analysis of evidence copied into the project.  Its settings: mode
+@code{ask}; privacy @code{locked}, so nothing reaches the network;
+observer isolation (@pxref{Isolated Steps}), so steps see the host's
+processes and the @code{host_network} tool its sockets, routes and ARP
+table; encryption at rest on; an integrity manifest required
+(@pxref{Integrity Checks}).  Its planner prompt asks for the most
+volatile data first, as RFC 3227 does, and for every copy to be hashed.
+
+Its allow-list: read-only inspection runs once the plan is approved ---
+text and binary viewers (@command{cat}, @command{grep}, @command{rg},
+@command{jq}, @command{strings}, @command{xxd}, @command{readelf},
+@dots{}), hashes (@command{sha256sum}, @dots{}), processes and sessions
+(@command{ps}, @command{pstree}, @command{lsof}, @command{who},
+@command{w}, @command{last}, @command{lastb}), @command{journalctl},
+@command{ausearch}, @command{aureport}, reading a capture
+(@command{tcpdump -r}, @command{tshark -r}), @command{find},
+@command{lsblk}, @command{date}.  Collecting copies and the forensic
+tools are powerful and asked for every time: @command{cp},
+@command{tar}, @command{yara}, Volatility (@command{vol},
+@command{vol3}), the Sleuth Kit (@command{fls}, @command{icat},
+@command{mmls}, @command{istat}, @command{fsstat}) and plaso
+(@command{log2timeline.py}, @command{psort.py}, @command{pinfo.py}).
+Nothing that deletes, moves, kills, changes permissions or installs is
+on it, and no trusted sequence.
+
+Refused on top of the built-in refusals: @command{tar} extracting,
+appending, updating or deleting (only new archives); @command{sort
+-o}; @command{rg --pre}; @command{tcpdump -z}; @command{tshark -X};
+Volatility's @option{--plugin-dirs} (code from a directory).
+
+Left out on purpose: @command{ss}, @command{netstat}, @command{ip},
+@command{df}, @command{findmnt} and @command{mount}.  They read the
+caller's own network or mount namespace, so even under observer
+isolation they would show the sandbox --- a falsely clean answer; use
+@code{host_network} for the network.  @command{systemctl} needs the
+system bus, which steps cannot reach.  Disk and memory acquisition is
+done by you, outside Codebud, with a write-blocker where it applies
+(NIST SP 800-86 advises against imaging a whole device from a live
+system); Codebud analyses the images.
+@end table
+
 @subheading Your own profiles
 
 A profile is a TOML file, @file{~/.config/codebud/profiles/@var{name}.toml}
