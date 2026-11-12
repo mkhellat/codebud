@@ -122,6 +122,21 @@ _REFUSED_FLOOR = {
 }  # fmt: skip
 
 
+# Versioned or distribution-specific names of programs with refusal rules:
+# python3.14 is python, nc.openbsd and nc.traditional are nc.
+_NAME_FAMILIES = ((re.compile(r"^python[0-9.]*$"), "python"), (re.compile(r"^nc\..+$"), "nc"))
+
+
+def _program_name(word: str) -> str:
+    """The name refusal rules know ``word`` by: its last path component,
+    with version and distribution suffixes folded into the family."""
+    name = word.rsplit("/", 1)[-1]
+    for pattern, family in _NAME_FAMILIES:
+        if pattern.match(name):
+            return family
+    return name
+
+
 def _option_matches(arg: str, pattern: str) -> bool:
     """Whether the argument ``arg`` is the option ``pattern``, the way
     programs parse options: --opt, --opt=value and any abbreviation of
@@ -562,22 +577,23 @@ class SafetyEngine:
         """Why an argument of ``words`` is never allowed, or None."""
         if not words:
             return None
-        # /usr/bin/find is judged as find.
-        program = words[0].rsplit("/", 1)[-1]
+        shown = words[0].rsplit("/", 1)[-1]  # the name as written, for the message
+        program = _program_name(words[0])  # /usr/bin/find -> find, python3.14 -> python
         args = list(words[1:])
         forbidden = _forbidden_argument([program, *args])
         if forbidden:
-            return f"{program} {forbidden} is never allowed (it can run or delete anything)"
+            return f"{shown} {forbidden} is never allowed (it can run or delete anything)"
         if program == "tar" and args and not args[0].startswith("-"):
             # tar's old style: a dash-less first argument is a cluster of
             # options (tar cIf a.tar . is tar -c -I -f).
             args[0] = "-" + args[0]
         floor = refused_option(args, _REFUSED_FLOOR.get(program, ()))
         if floor:
-            return f"{program} {floor} is never allowed (it can run or delete anything)"
-        added = refused_option(args, getattr(self, "refused", {}).get(program, ()))
+            return f"{shown} {floor} is never allowed (it can run or delete anything)"
+        refused = getattr(self, "refused", {})
+        added = refused_option(args, {*refused.get(program, ()), *refused.get(shown, ())})
         if added:
-            return f"{program} {added} is never allowed (refused_arguments.json)"
+            return f"{shown} {added} is never allowed (refused_arguments.json)"
         return None
 
     def _command_refusal(self, cmd: str) -> str | None:

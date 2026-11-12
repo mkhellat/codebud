@@ -123,7 +123,10 @@ where a first argument without a dash is a group of options
 (@code{tar cIf} is @code{tar -c -I -f}).  A short option found inside a
 group is refused even where it is in fact another option's value: the
 check errs on the side of refusing.  A program given by its full path
-(@file{/usr/bin/nc}) is judged by its name, and behind a wrapper
+(@file{/usr/bin/nc}) is judged by its name, and a versioned or
+distribution-specific name by its family (@command{python3.14} as
+@command{python}, @command{nc.openbsd} and @command{nc.traditional} as
+@command{nc}), and behind a wrapper
 (@code{timeout 5 nc -e @dots{}}, @code{env X=1 python3 -c @dots{}}) the
 program it runs is judged too.
 

