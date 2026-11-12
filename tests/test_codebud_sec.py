@@ -203,3 +203,15 @@ def test_pin_is_codebud_integrity_pin(monkeypatch):
     assert cli.main(["pin", "--command", "nmap"]) == 0
     assert seen["argv"] == ["codebud", "integrity", "pin", "--command", "nmap"]
 
+
+
+def test_a_scope_refusal_gets_its_own_hint():
+    """Not the allow-list advice: no allow-list widens an engagement."""
+    from codebud.cli.errors import explain
+
+    error = (
+        "The safety policy refused step 1 (nmap 192.168.1.1): engagement scope: "
+        "nmap: 192.168.1.1 is not in the engagement scope (acme.toml)"
+    )
+    explanation, fix = explain(error)
+    assert "engagement" in explanation and "harmless_commands" not in fix
