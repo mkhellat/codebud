@@ -170,3 +170,41 @@ def test_manifest_file_is_readable_json(config, bindir):
     assert data["models"] == {"m:1": "d"}
     assert data["binaries"]["grep"]["sha256"] == _sha(bindir / "grep")
     assert data["created"]
+
+
+def test_files_are_pinned_and_checked(config, bindir, tmp_path):
+    profile = tmp_path / "profile.toml"
+    profile.write_text('mode = "ask"\n')
+    manifest, _ = integrity.build({}, [], path=str(bindir), files=[profile])
+    assert manifest.files == {str(profile): _sha(profile)}
+    integrity.save(manifest)
+    assert integrity.load() == manifest
+    assert integrity.check_files(manifest) == []
+    profile.write_text('mode = "full-auto"\n')
+    assert integrity.check_files(manifest) == [f"{profile}: contents changed"]
+    profile.unlink()
+    assert integrity.check_files(manifest) == [f"{profile}: missing"]
+
+
+def test_start_problems_include_pinned_files(bindir, tmp_path):
+    profile = tmp_path / "p.toml"
+    profile.write_text("x")
+    manifest, _ = integrity.build({}, [], path=str(bindir), files=[profile])
+    profile.write_text("y")
+    assert any("contents changed" in p for p in integrity.start_problems(manifest, [], {}))
+
+
+def test_a_manifest_without_files_still_loads(config):
+    """Manifests pinned before files were pinned stay valid."""
+    config.mkdir(parents=True)
+    integrity.manifest_path().write_text('{"version": 1, "models": {}, "binaries": {}}')
+    assert integrity.load().files == {}
+
+
+def test_bad_files_entry_is_an_error(config):
+    config.mkdir(parents=True)
+    integrity.manifest_path().write_text(
+        '{"version": 1, "models": {}, "binaries": {}, "files": {"a": 1}}'
+    )
+    with pytest.raises(integrity.IntegrityError):
+        integrity.load()
