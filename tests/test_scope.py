@@ -1,0 +1,230 @@
+"""
+tests/test_scope.py
+
+The engagement scope guard (phase 10, step 5 plan, PR 4; D14i): every
+target of a network tool is read from its command line and checked;
+active tools out of scope are refused, passive lookups ask; a target
+that cannot be read is refused.
+"""
+
+import ipaddress
+import shlex
+
+import pytest
+
+from codebud import safety
+from codebud.safety import SafetyEngine
+from codebud_sec.engagement import load
+from codebud_sec.scope import ACTIVE, PASSIVE, ScopeGuard, TargetError, targets_of
+
+SCOPE = """\
+client = "ACME"
+in_scope = ["10.0.0.0/16", "app.example.com", "2001:db8::/48"]
+out_of_scope = ["10.0.5.0/24", "10.0.9.9"]
+"""
+
+
+@pytest.fixture
+def engagement(tmp_path):
+    path = tmp_path / "acme.toml"
+    path.write_text(SCOPE)
+    return load(path)
+
+
+@pytest.fixture
+def guard(engagement, monkeypatch):
+    monkeypatch.setattr(safety, "_STEP_CHECKS", [])
+    monkeypatch.setattr(safety, "_STEP_NOTICES", [])
+    monkeypatch.delenv("CODEBUD_PRIVACY", raising=False)
+    g = ScopeGuard(engagement)
+    g.activate()
+    return g
+
+
+def _targets(cmd):
+    [(program, targets)] = targets_of(shlex.split(cmd))
+    return targets
+
+
+def _hosts(cmd):
+    return sorted(_targets(cmd).hosts)
+
+
+def _nets(cmd):
+    return [str(n) for n in _targets(cmd).networks]
+
+
+# --- reading targets -------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    ("cmd", "hosts"),
+    [
+        ("nmap -sV -p 22,80 -T4 10.0.0.5", ["10.0.0.5"]),
+        ("nmap -Pn -oN out.txt --top-ports 100 app.example.com", ["app.example.com"]),
+        ("nmap -p80 -sS --open 10.0.0.5 10.0.0.6", ["10.0.0.5", "10.0.0.6"]),
+        ("nmap --dns-servers 8.8.8.8 10.0.0.5", ["10.0.0.5", "8.8.8.8"]),
+        ("nmap -sI zombie.example.org:80 10.0.0.5", ["10.0.0.5", "zombie.example.org"]),
+        ("nmap -b anon@ftp.example.org:21 10.0.0.5", ["10.0.0.5", "ftp.example.org"]),
+        ("dig @1.1.1.1 app.example.com MX +short", ["1.1.1.1", "app.example.com"]),
+        ("dig -x 10.0.0.5", ["10.0.0.5"]),
+        ("host app.example.com 10.0.0.53", ["10.0.0.53", "app.example.com"]),
+        ("nc -zv 10.0.0.5 22", ["10.0.0.5"]),
+        ("nc -lvnp 4444", []),  # listening contacts no one
+        ("nc -x proxy.example.org:1080 10.0.0.5 80", ["10.0.0.5", "proxy.example.org"]),
+        ("ncat --proxy 10.0.0.7:3128 10.0.0.5 80", ["10.0.0.5", "10.0.0.7"]),
+    ],
+)
+def test_targets_are_read_including_third_parties(cmd, hosts):
+    assert _hosts(cmd) == sorted(hosts)
+
+
+@pytest.mark.parametrize(
+    ("cmd", "networks"),
+    [
+        ("nmap 10.0.1.0/24", ["10.0.1.0/24"]),
+        ("nmap 10.0.0.1-5", ["10.0.0.1/32", "10.0.0.2/31", "10.0.0.4/31"]),
+        ("masscan -p80 --rate 1000 10.0.2.0-10.0.2.255", ["10.0.2.0/24"]),
+        ("masscan -p80 --range 10.0.3.0/24", ["10.0.3.0/24"]),
+    ],
+)
+def test_ranges_are_read_as_networks(cmd, networks):
+    assert _nets(cmd) == networks
+
+
+def test_an_octet_range_is_judged_by_its_bounds():
+    """10.0.0-3.1-254 names 4 x 254 addresses; their bounding range,
+    10.0.0.1 - 10.0.3.254, holds them all, so judging it errs strict."""
+    nets = _targets("nmap 10.0.0-3.1-254").networks
+    first, last = nets[0].network_address, nets[-1].broadcast_address
+    assert (str(first), str(last)) == ("10.0.0.1", "10.0.3.254")
+
+
+@pytest.mark.parametrize(
+    ("cmd", "why"),
+    [
+        ("nmap -iR 100", "random hosts"),
+        ("nmap --resume scan.log", "a file"),
+        ("nmap --frobnicate x 10.0.0.5", "unknown option"),
+        ("nmap -sV", "no target"),
+        ("nmap 'not a host!'", "not a target"),
+        ("masscan -c scan.conf", "settings file"),
+        ("dig -f queries.txt", "batch file"),
+        ("nc -Z 10.0.0.5 80", "unknown option"),
+        ("nmap -iL /etc/hosts", "a list outside the project"),
+    ],
+)
+def test_what_cannot_be_read_is_an_error(cmd, why):
+    with pytest.raises(TargetError):
+        targets_of(shlex.split(cmd))
+
+
+def test_a_target_list_in_the_project_is_read(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "hosts.txt").write_text("# web tier\n10.0.0.5\napp.example.com 10.0.1.0/24\n")
+    targets = _targets("nmap -iL hosts.txt")
+    assert sorted(targets.hosts) == ["10.0.0.5", "app.example.com"]
+    assert targets.networks == [ipaddress.ip_network("10.0.1.0/24")]
+
+
+def test_tiers():
+    assert _targets("dig app.example.com").tier == PASSIVE
+    assert _targets("nmap 10.0.0.5").tier == ACTIVE
+
+
+def test_tools_are_found_behind_wrappers_and_by_variant_name():
+    assert [p for p, _ in targets_of(shlex.split("timeout 60 nmap 10.0.0.5"))] == ["nmap"]
+    assert [p for p, _ in targets_of(shlex.split("nc.openbsd 10.0.0.5 80"))] == ["nc"]
+
+
+# --- the guard, through the safety engine ----------------------------------------
+
+
+def _engine():
+    engine = SafetyEngine()
+    engine.harmless_commands = ["dig", "host", "ls"]
+    engine.powerful_commands = ["nmap", "masscan", "nc", "ncat", "timeout", "curl"]
+    return engine
+
+
+def _step(cmd, network=True):
+    return {"tool": "command", "args": {"cmd": cmd, "network": network}}
+
+
+@pytest.mark.parametrize(
+    "cmd",
+    [
+        "nmap -sV 10.0.0.5",
+        "nmap -sn 10.0.1.0/24",
+        "nmap app.example.com",
+        "nmap 2001:db8::5",
+        "masscan -p443 10.0.2.0/24",
+        "nc -zv 10.0.0.5 22",
+        "timeout 600 nmap 10.0.0.5",
+    ],
+)
+def test_in_scope_active_steps_run(guard, cmd):
+    assert _engine().refusal_reason(_step(cmd)) is None, cmd
+
+
+@pytest.mark.parametrize(
+    ("cmd", "why"),
+    [
+        ("nmap 192.168.1.1", "outside"),
+        ("nmap 10.0.5.20", "excluded network"),
+        ("nmap 10.0.9.9", "excluded address"),
+        ("nmap 10.0.0.0/8", "wider than the scope"),
+        ("nmap 10.0.9.0/24", "holds an excluded address"),
+        ("nmap evil.example.org", "a name not in scope"),
+        ("nmap --dns-servers 8.8.8.8 10.0.0.5", "a DNS server outside"),
+        ("nmap -sI zombie.example.org 10.0.0.5", "an idle-scan zombie outside"),
+        ("nc -x proxy.example.org:1080 10.0.0.5 80", "a proxy outside"),
+        ("timeout 60 nmap 192.168.1.1", "behind a wrapper"),
+        ("nmap -iR 10", "random targets"),
+        ("nmap --weird 10.0.0.5", "unreadable"),
+    ],
+)
+def test_out_of_scope_active_steps_are_refused(guard, cmd, why):
+    reason = _engine().refusal_reason(_step(cmd))
+    assert reason is not None and "engagement scope" in reason, f"{cmd} ({why})"
+
+
+def test_passive_lookups_out_of_scope_ask_instead(guard):
+    engine = _engine()
+    step = _step("dig evil.example.org")
+    assert engine.refusal_reason(step) is None
+    notice = engine.confirmation_reason(step)
+    assert notice is not None and "evil.example.org" in notice
+    # In scope: only the usual question for a network step, no scope warning.
+    in_scope = engine.confirmation_reason(_step("dig app.example.com"))
+    assert in_scope is None or "Outside the engagement" not in in_scope
+
+
+def test_an_unparsed_network_tool_is_refused(guard):
+    reason = _engine().refusal_reason(_step("curl https://app.example.com/"))
+    assert reason is not None and "cannot read its targets" in reason
+
+
+def test_steps_without_network_tools_are_untouched(guard):
+    assert _engine().refusal_reason(_step("ls -la", network=False)) is None
+
+
+def test_a_closed_window_refuses_active_steps(tmp_path, monkeypatch):
+    path = tmp_path / "late.toml"
+    path.write_text(SCOPE + "starts = 2020-01-01T00:00:00Z\nends = 2020-01-02T00:00:00Z\n")
+    monkeypatch.setattr(safety, "_STEP_CHECKS", [])
+    monkeypatch.setattr(safety, "_STEP_NOTICES", [])
+    ScopeGuard(load(path)).activate()
+    reason = _engine().refusal_reason(_step("nmap 10.0.0.5"))
+    assert reason is not None and "window" in reason
+
+
+def test_privacy_trusted_refuses_every_command(guard, monkeypatch):
+    monkeypatch.setenv("CODEBUD_PRIVACY", "trusted")
+    reason = _engine().refusal_reason(_step("ls", network=False))
+    assert reason is not None and "trusted" in reason
+
+
+def test_deactivate_removes_the_guard(guard):
+    guard.deactivate()
+    assert _engine().refusal_reason(_step("nmap 192.168.1.1")) is None

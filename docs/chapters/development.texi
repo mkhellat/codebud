@@ -165,6 +165,9 @@ tests/
 │                                what would change the host is refused
 ├── test_shipped_profiles.py     profiles of codebud_sec: found by name
 │                                beside codebud, not imported, not shadowed
+├── test_scope.py                engagement scope: targets read per tool,
+│                                third parties, ranges, active refused,
+│                                passive asked
 ├── test_skill.py                SKILL.md variants (default, Agensi), skill CLI
 ├── test_step_environment.py    steps never see the passphrase or secret
 │                                settings (any privacy level)

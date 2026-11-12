@@ -108,6 +108,24 @@ class Engagement:
             return False
         return any(t.matches(target) for t in self.in_scope)
 
+    def covers_network(self, network) -> bool:
+        """Whether every address of ``network`` (an ipaddress network) is in
+        scope: inside one in-scope network and overlapping no excluded
+        network or address. Names never cover addresses."""
+        inside = any(
+            t.network is not None
+            and t.network.version == network.version
+            and network.subnet_of(t.network)
+            for t in self.in_scope
+        )
+        excluded = any(
+            t.network is not None
+            and t.network.version == network.version
+            and network.overlaps(t.network)
+            for t in self.out_of_scope
+        )
+        return inside and not excluded
+
     def out_of_scope_reason(self, target: str, when: datetime | None = None) -> str | None:
         """Why acting on ``target`` is outside the engagement, or None.
 

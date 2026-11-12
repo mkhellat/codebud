@@ -17,6 +17,8 @@ SRC = Path(__file__).resolve().parent.parent / "src"
 CORE_API = {
     "codebud.crypto",  # encryption at rest: the evidence log (D14b)
     "codebud.fsutil",
+    "codebud.privacy",  # the scope guard refuses an engagement at privacy trusted
+    "codebud.safety",  # the scope guard registers its step check (D14i, PR 4)
 }
 
 
