@@ -637,6 +637,8 @@ src/codebud/                   the package
     └── host_network.py    host_network (observer profiles only)
 
 src/codebud_sec/               the security layer (authorized security work)
+├── cli.py             the codebud-sec command: sessions inside an
+│                      engagement, evidence add/verify/show/close, pin
 ├── engagement.py      engagement file: authorized scope
 ├── scope.py           scope guard: every network target read from the
 │                      command line and checked (DNS tools, whois,

@@ -17,6 +17,7 @@ codebud_TEXINFOS = \
 	chapters/model-management.texi \
 	chapters/performance-benchmarking.texi \
 	chapters/privacy.texi \
+	chapters/security.texi \
 	chapters/safety-and-sandbox.texi \
 	chapters/tools-reference.texi \
 	chapters/troubleshooting.texi \

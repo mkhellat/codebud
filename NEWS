@@ -85,6 +85,17 @@ a safety policy you can read and change.
   exploitation tools, no files sent to a target.  A profile requires an
   engagement with engagement = true.
 
+  codebud-sec, the security layer's command: codebud-sec chat|run|plan
+  --engagement FILE runs codebud inside an engagement -- its scope guard
+  and network fence active, every step recorded before it runs and after
+  it ends in an encrypted, hash-chained evidence log in codebud's data
+  directory, out of the steps' reach; a later session must use the same
+  engagement file.  codebud-sec evidence add|verify|show|close keeps the
+  log; codebud-sec pin is codebud integrity pin.  Scanning steps run
+  behind a network fence (pasta and nftables, optional): only their
+  targets are reachable, no DNS, nothing of the machine itself.  A new
+  manual chapter, "Security Work".
+
   A profile can ask for observer isolation (isolation = "observer"):
   command steps see the host's processes through a read-only /proc,
   for live triage, but still cannot signal them or reach the network.
@@ -107,5 +118,5 @@ a safety policy you can read and change.
   Alpha: the command line, configuration and data formats may still
   change before 1.0.  Isolation needs bubblewrap and user namespaces
   (GNU/Linux); elsewhere steps run unisolated with a warning.  The
-  security layer (codebud_sec: engagement file, evidence log) ships but
-  is not used yet.
+  security layer (codebud_sec) is for authorized work only and is used
+  through codebud-sec; its network fence needs pasta (passt) and nft.
