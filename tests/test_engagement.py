@@ -144,3 +144,21 @@ def test_a_fully_qualified_exclusion_still_excludes(tmp_path):
     assert not eng.covers("prod.example.com")
     assert not eng.covers("prod.example.com.")
     assert eng.out_of_scope_reason("prod.example.com")
+
+
+def test_covers_network(tmp_path):
+    import ipaddress
+
+    from codebud_sec.engagement import load
+
+    path = tmp_path / "e.toml"
+    path.write_text(
+        'in_scope = ["10.0.0.0/16", "app.example.com"]\nout_of_scope = ["10.0.5.0/24", "10.0.9.9"]\n'
+    )
+    engagement = load(path)
+    net = ipaddress.ip_network
+    assert engagement.covers_network(net("10.0.1.0/24"))
+    assert not engagement.covers_network(net("10.0.0.0/8"))  # wider than the scope
+    assert not engagement.covers_network(net("10.0.5.0/25"))  # excluded
+    assert not engagement.covers_network(net("10.0.9.0/24"))  # holds an excluded address
+    assert not engagement.covers_network(net("192.168.0.0/24"))

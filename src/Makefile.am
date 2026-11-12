@@ -62,7 +62,8 @@ nobase_python_PYTHON = \
 	codebud/tools/web_search.py \
 	codebud_sec/__init__.py \
 	codebud_sec/engagement.py \
-	codebud_sec/evidence.py
+	codebud_sec/evidence.py \
+	codebud_sec/scope.py
 
 nobase_dist_python_DATA = \
 	codebud/data/policy/harmless_commands.json \

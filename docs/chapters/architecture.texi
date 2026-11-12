@@ -637,6 +637,9 @@ src/codebud/                   the package
 
 src/codebud_sec/               the security layer (authorized security work)
 ├── engagement.py      engagement file: authorized scope
+├── scope.py           scope guard: every network target read from the
+│                      command line and checked; registered with the
+│                      core's safety.add_step_check()
 └── evidence.py        hash-chained, append-only evidence log,
                        encrypted at rest (appends need no passphrase)
 
