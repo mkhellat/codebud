@@ -317,3 +317,30 @@ def test_environment_assignments_before_a_tool_are_refused(project, cmd):
 
 def test_harmless_environment_assignments_are_fine(project):
     assert _hosts("env LANG=C LC_ALL=C TZ=UTC curl https://app.example.com/") == ["app.example.com"]
+
+
+@pytest.mark.parametrize(
+    "cmd",
+    [
+        "sslscan --certs evil.example.org app.example.com",  # --certs takes =value only
+        "sslscan --sni-name x app.example.com",
+        "sslscan --xmpp-server evil.example.org app.example.com",  # a flag: two hosts
+        "sslscan app.example.com evil.example.org",
+    ],
+)
+def test_sslscan_is_read_as_sslscan_reads_it(project, cmd):
+    """Review of #20: sslscan takes values only after =, and --xmpp-server
+    is a flag, so reading them otherwise judged a host it does not scan."""
+    with pytest.raises(TargetError):
+        targets_of(shlex.split(cmd))
+
+
+def test_sslscan_values_after_equals_are_fine(project):
+    cmd = "sslscan --sni-name=app.example.com --xml=out.xml --xmpp-server 10.0.0.5:5269"
+    assert _hosts(cmd) == ["10.0.0.5"]
+
+
+def test_testssl_phone_out_is_refused(project):
+    """Review of #20: it contacts the CRL and OCSP servers of third parties."""
+    with pytest.raises(TargetError, match="phone-out"):
+        targets_of(shlex.split("testssl.sh --phone-out x app.example.com"))

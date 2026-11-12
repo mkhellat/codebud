@@ -106,16 +106,17 @@ def _spec(spec: str, what: str):
     raise TargetError(f"{what} {spec!r} is not an address, network, range or host name")
 
 
-def _list_file(path: str, targets: Targets) -> None:
-    """Targets read from a file: only a file inside the project."""
+def _list_file(path: str, targets: Targets, spec=lambda text: text) -> None:
+    """Targets read from a file: only a file inside the project. ``spec``
+    turns each word into a target specification (host:port -> host)."""
     real = os.path.realpath(path)
     project = os.path.realpath(os.getcwd())
     if os.path.commonpath([real, project]) != project or not os.path.isfile(real):
         raise TargetError(f"target list {path}: only a file inside the project can be read")
     with open(real, encoding="utf-8", errors="replace") as f:
         for line in f:
-            for spec in line.split("#", 1)[0].split():
-                targets.add(spec, f"target in {path}")
+            for word in line.split("#", 1)[0].split():
+                targets.add(spec(word), f"target in {path}")
 
 
 # --- a small option walker -------------------------------------------------------
@@ -852,33 +853,31 @@ def _feroxbuster(args):
     return _need_targets("feroxbuster", targets)
 
 
-# sslscan: --opt or --opt=value; operands host[:port]; --targets a list file.
-_SSLSCAN_VALUE = {"--targets", "--sni-name", "--xmpp-server", "--xml", "--timeout",
-                  "--connect-timeout", "--sleep", "--certs", "--pk", "--pkpass"}  # fmt: skip
+# sslscan: values only as --opt=value (sslscan does not take the next
+# word); one host[:port], or a list in --targets=file.
 _SSLSCAN_PATTERNS = (
     r"^--(ipv4|ipv6|show-certificate|show-certs|show-client-cas|show-ciphers|show-cipher-ids"
     r"|show-times|show-sigs|no-ciphersuites|no-compression|no-fallback|no-groups|no-heartbleed"
     r"|no-renegotiation|no-check-certificate|no-cipher-details|no-colour|no-color|ocsp|tlsall"
-    r"|ssl2|ssl3|tls10|tls11|tls12|tls13|bugs|verbose|version|help|iana-names|rdp"
+    r"|ssl2|ssl3|tls10|tls11|tls12|tls13|bugs|verbose|version|help|iana-names|rdp|xmpp-server"
     r"|starttls-(ftp|imap|irc|ldap|mysql|pop3|psql|smtp|xmpp))$",
+    r"^--(targets|sni-name|xml|timeout|connect-timeout|sleep|certs|pk|pkpass)=.+$",
     r"^-[46]$",
 )
 
 
 def _sslscan(args):
     targets = Targets(ACTIVE)
-    for option, word in _walk(args, _SSLSCAN_VALUE, set(), _SSLSCAN_PATTERNS):
-        if option == "--targets":
-            real = os.path.realpath(word)
-            project = os.path.realpath(os.getcwd())
-            if os.path.commonpath([real, project]) != project or not os.path.isfile(real):
-                raise TargetError(f"target list {word}: only a file inside the project can be read")
-            with open(real, encoding="utf-8", errors="replace") as f:
-                for line in f:
-                    for spec in line.split("#", 1)[0].split():
-                        targets.add(_host_port(spec, "target"), f"target in {word}")
+    hosts = []
+    for option, word in _walk(args, set(), set(), _SSLSCAN_PATTERNS):
+        if option and option.startswith("--targets="):
+            _list_file(option.partition("=")[2], targets, lambda w: _host_port(w, "target"))
         elif option is None:
-            targets.add(_host_port(word, "target"))
+            hosts.append(word)
+    if len(hosts) > 1:
+        raise TargetError("sslscan takes one host (or a list with --targets=file)")
+    for host in hosts:
+        targets.add(_host_port(host, "target"))
     return _need_targets("sslscan", targets)
 
 
@@ -888,7 +887,7 @@ _TESTSSL_VALUE = {
     "-t", "--starttls", "--xmpphost", "--ip", "--proxy", "--sneaky", "--jsonfile",
     "--jsonfile-pretty", "--csvfile", "--htmlfile", "--logfile", "--outfile", "--severity",
     "--connect-timeout", "--openssl-timeout", "--basicauth", "--reqheader", "--color",
-    "--add-ca", "--mapping", "--phone-out", "--file", "-iL", "--input-file", "--mx",
+    "--add-ca", "--mapping", "--file", "-iL", "--input-file", "--mx",
     "--openssl", "--warnings",
 }  # fmt: skip
 _TESTSSL_FLAGS = {
@@ -901,7 +900,7 @@ _TESTSSL_FLAGS = {
     "-I", "--ccs", "-T", "--ticketbleed", "-R", "--renegotiation", "-C", "--compression",
     "-B", "--breach", "-O", "--poodle", "-Z", "--tls-fallback", "-W", "--sweet32",
     "-A", "--beast", "-L", "--lucky13", "-F", "--freak", "-J", "--logjam", "-D", "--drown",
-    "--rc4", "--appelbaum",
+    "--rc4", "--appelbaum", "--phone-out",
 }  # fmt: skip
 
 
@@ -913,6 +912,10 @@ def _testssl(args):
             raise TargetError("testssl.sh mass testing reads targets and options from a file")
         if option == "--mx":
             raise TargetError("testssl.sh --mx tests the hosts a DNS answer names")
+        if option == "--phone-out":
+            raise TargetError(
+                "testssl.sh --phone-out contacts CRL and OCSP servers of third parties"
+            )
         if option == "--openssl":
             raise TargetError("testssl.sh --openssl runs a program codebud has not checked")
         if option == "--proxy":
