@@ -257,8 +257,12 @@ _NMAP_PATTERNS = (r"^-s[A-HJ-Za-z]{1,2}$", r"^-P[A-Za-z][0-9,\-]*$", r"^-T[0-5]$
 # targets-* (adds the hosts it finds as targets). -sC and -A run
 # "default". A script given as a file runs code nobody checked. Without
 # the database no script can be judged, so --script, -sC and -A are
-# refused. -sV runs the "version" scripts and is allowed, although nmap
-# marks one of them, iec61850-mms (ICS, port 102), intrusive.
+# refused, and so is --datadir, which would load scripts and their
+# database from elsewhere. -sV runs the "version" scripts and is allowed,
+# although nmap marks one of them, iec61850-mms (ICS, port 102),
+# intrusive. A few discovery scripts take a DNS domain in --script-args
+# (dns-srv-enum.domain); those queries go to the resolver, as passive
+# lookups do.
 _NMAP_SCRIPT_DBS = (
     "/usr/share/nmap/scripts/script.db",
     "/usr/local/share/nmap/scripts/script.db",
@@ -377,6 +381,11 @@ def _nmap(args):
             raise TargetError("nmap -iR scans random hosts, outside any scope")
         if option in ("--resume", "--script-args-file"):
             raise TargetError(f"nmap {option} reads from a file that cannot be judged")
+        if option == "--datadir":
+            raise TargetError(
+                "nmap --datadir loads scripts and their database from a directory "
+                "steps can write, so its scripts cannot be judged"
+            )
         if option in ("--script", "-sC", "-A"):
             problem = _nmap_script_problem(word if option == "--script" else "default")
             if problem:

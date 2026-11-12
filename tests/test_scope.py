@@ -431,3 +431,10 @@ def test_masscan_within_the_rate_cap(rate):
 def test_masscan_over_the_rate_cap_is_refused(rate):
     with pytest.raises(TargetError, match="rate"):
         targets_of(shlex.split(f"masscan -p80 --rate {rate} 10.0.2.0/24"))
+
+
+def test_nmap_datadir_is_refused(guard):
+    """Review of #21: scripts and script.db would come from a directory a
+    step can write, while the guard judges the system's database."""
+    reason = _engine().refusal_reason(_step("nmap --datadir ./mine --script http-title 10.0.0.5"))
+    assert reason is not None and "--datadir" in reason
