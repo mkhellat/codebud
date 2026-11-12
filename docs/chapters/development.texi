@@ -55,6 +55,8 @@ tests/
 ├── test_chat_input.py           / menu, toolbar, Shift-Tab (prompt_toolkit)
 ├── test_cli.py                  subcommands, doctor, display, chat REPL,
 │                                history, sessions, modes, run --yes
+├── test_codebud_sec.py          codebud-sec: guard, fence and recorder on
+│                                for a session only; evidence commands; pin
 ├── test_confine.py              file tools: project-only writes, no .git/
 │                                .codebud/, no secret reads, symlinks, display
 ├── test_core.py                 AgentCore: models, /compact, context usage

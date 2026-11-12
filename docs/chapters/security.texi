@@ -1,0 +1,178 @@
+@node Security Work
+@chapter Security Work
+@cindex security work
+@cindex codebud-sec
+
+Codebud's security layer (@file{codebud_sec}, part of the Codebud
+distribution) is for @emph{authorized} security work: incident response
+on hosts you own or are authorized to examine, and penetration tests you
+are contracted to run.  It adds an engagement file that states what was
+authorized, a command, @command{codebud-sec}, that keeps every step to
+it, and an evidence log that records every step.  Nothing here grants
+access to anything; it only states, and helps keep to, what was already
+authorized.  Use it only within a written authorization (rules of
+engagement, a signed scope, an incident ticket).
+
+@menu
+* Security Work at a Glance::   What codebud-sec adds to codebud.
+* The Engagement File::         Client, scope, window, fence.
+* Running codebud-sec::         Sessions, evidence, pinning.
+* The Evidence Log::            What is recorded and how to check it.
+* What Security Work Does Not Cover::  The limits, plainly.
+@end menu
+
+
+@node Security Work at a Glance
+@section Security Work at a Glance
+
+@multitable @columnfractions .32 .68
+@headitem Piece @tab What it does
+@item Security profiles
+@tab @code{security-ir} (incident response: read-only triage and
+forensics, no network) and @code{security-pentest} (reconnaissance and
+scanning of in-scope hosts); @pxref{Profiles}.
+@item Engagement file
+@tab A TOML file naming the client, the in-scope and excluded targets and
+the time window.
+@item Scope guard
+@tab Reads every host a network step will contact from its command line
+and refuses the step when one is out of scope, excluded, or the window
+is closed (lookups out of scope ask instead).  A command it cannot read
+is refused.
+@item Network fence
+@tab Runs scanning steps where the network itself lets through only
+their targets (@pxref{Isolated Steps}).
+@item Evidence log
+@tab An encrypted, hash-chained, append-only record of every step, before
+it runs and after it ends, refused steps too.
+@item Integrity
+@tab Both profiles refuse to start without a pinned manifest of the
+models and programs they run (@pxref{Integrity Checks}).
+@end multitable
+
+The security profiles need an encryption key (@command{codebud key
+init}) and a pinned manifest (@command{codebud-sec pin}).
+@code{security-pentest} runs no command until an engagement is open, so
+it is used through @command{codebud-sec}.
+
+
+@node The Engagement File
+@section The Engagement File
+@cindex engagement file
+
+@example
+client = "ACME Ltd"
+ticket = "PT-2026-042"
+operator = "A. Analyst"
+in_scope = ["10.20.0.0/16", "app.acme.example", "2001:db8:42::/48"]
+out_of_scope = ["10.20.5.0/24", "admin.app.acme.example"]
+starts = 2026-11-16T08:00:00Z
+ends = 2026-11-20T18:00:00Z
+fence_scanning = true
+notes = "Production: no denial of service; scans 08:00-18:00 only."
+@end example
+
+@table @code
+@item in_scope
+Networks (CIDR), addresses and names.  A name covers its subdomains
+(@code{app.acme.example} covers @code{api.app.acme.example}).  Required.
+@item out_of_scope
+Excluded networks, addresses and names; they win over @code{in_scope}.
+A network is in scope only when all of it is.
+@item starts, ends
+The window the work is authorized for (UTC unless an offset is given).
+Outside it, active steps are refused.
+@item fence_scanning
+@code{true} (the default) runs scanning steps behind the network fence;
+@code{false} gives raw scans (nmap SYN, UDP and OS scans, masscan) back,
+with the scope guard as their only check.
+@item client, ticket, operator, notes
+Recorded in the evidence log.
+@end table
+
+A name is never matched against an address, and the guard never
+resolves a name to decide scope; the fence resolves the names a step
+uses just before it runs.
+
+
+@node Running codebud-sec
+@section Running codebud-sec
+
+@example
+codebud-sec chat --engagement acme.toml
+codebud-sec run  --engagement acme.toml "scan the web tier for open ports"
+codebud-sec plan --engagement acme.toml --profile security-ir "..."
+@end example
+
+@noindent
+@command{chat}, @command{run} and @command{plan} open the engagement and
+then run codebud itself, with the @code{security-pentest} profile unless
+@option{--profile} names another.  Any other option is passed on to
+codebud (@option{--resume}, @option{-m}, @dots{}).  For the whole session
+the scope guard and the network fence are active and every step is
+recorded; when it ends they are taken down.  Outside the window,
+@command{codebud-sec} says so at the start and active steps are refused.
+
+@example
+codebud-sec evidence add disk.E01 rules-of-engagement.pdf \
+    -m "image received from the client" --engagement acme.toml
+codebud-sec evidence verify [--files] --engagement acme.toml
+codebud-sec evidence show --engagement acme.toml
+codebud-sec evidence close --engagement acme.toml
+codebud-sec pin
+@end example
+
+@noindent
+@command{evidence add} records files with their SHA-256 (and a note).
+@command{verify} checks the hash chain, and with @option{--files} that
+the recorded files are unchanged.  @command{show} lists the entries.
+@command{close} ends the log: nothing can be added after it.
+@command{pin} is @command{codebud integrity pin}.  @option{--evidence
+LOG} names a log other than the default, @file{<engagement>.evidence.jsonl}
+beside the engagement file.
+
+
+@node The Evidence Log
+@section The Evidence Log
+@cindex evidence log
+
+The log is a JSON Lines file, one entry per line, each holding the hash
+of the one before; editing, removing or reordering an entry breaks the
+chain.  The first entry names the engagement file with its SHA-256, so
+the log says exactly what was authorized.  Each session adds a
+@code{start} and an @code{end} note; each step a @code{step} entry before
+it runs (the tool, its arguments, the description) and one after it ends
+(its exit status and output); a refused step a @code{warning} with the
+reason.  A step whose start cannot be recorded does not run.  Output or
+arguments longer than 64 KiB are kept as their SHA-256, size and
+beginning.
+
+The log is encrypted at rest with your key: each entry is sealed, and
+only its sequence number, kind and the two hashes stay readable, so that
+appending needs no passphrase.  Reading and a full @command{verify} ask
+for it.
+
+@cindex head hash
+What the chain proves is relative to its head: anyone who can write the
+file could rewrite it consistently.  @command{verify} prints the head
+hash --- record it outside the log (the case notes, a ticket, a signed
+message), and the log then shows any change made before that point.
+
+
+@node What Security Work Does Not Cover
+@section What Security Work Does Not Cover
+
+@itemize
+@item Authorization.  The engagement file states it; it does not grant
+it, and Codebud cannot tell whether it is true.
+@item Names.  The client's DNS decides what an in-scope name resolves to,
+and an address shared with other sites (a CDN) is reachable while a step
+that names it runs.
+@item Lookups.  @command{dig}, @command{host} and @command{whois} are not
+fenced; out of scope they ask rather than refuse.
+@item Raw scans.  With @code{fence_scanning = false}, scanning relies on
+the scope guard reading the command line.
+@item The machine itself.  The evidence log and the integrity checks
+detect changes made through Codebud and to the files they cover; a
+compromised operating system can defeat both (RFC 3227, section 5).
+@end itemize

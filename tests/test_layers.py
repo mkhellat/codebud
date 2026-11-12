@@ -15,6 +15,7 @@ SRC = Path(__file__).resolve().parent.parent / "src"
 
 # The core modules codebud_sec may import.
 CORE_API = {
+    "codebud.cli.main",  # codebud-sec hands its sessions over to codebud (PR 7)
     "codebud.crypto",  # encryption at rest: the evidence log (D14b)
     "codebud.fsutil",
     "codebud.isolation",  # the scope guard needs isolated steps (review of #18)

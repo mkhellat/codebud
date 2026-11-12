@@ -61,6 +61,8 @@ nobase_python_PYTHON = \
 	codebud/tools/tool_registry.py \
 	codebud/tools/web_search.py \
 	codebud_sec/__init__.py \
+	codebud_sec/__main__.py \
+	codebud_sec/cli.py \
 	codebud_sec/engagement.py \
 	codebud_sec/evidence.py \
 	codebud_sec/fence.py \

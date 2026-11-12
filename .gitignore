@@ -26,6 +26,7 @@ Makefile.in
 /config.log
 /config.status
 /codebud
+/codebud-sec
 /codebud-*.tar.gz
 /codebud-*.tar.gz.sig
 /codebud-*.tar.gz.sha256
