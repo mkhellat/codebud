@@ -22,6 +22,8 @@ The executor does NOT:
 
 from typing import Any
 
+from codebud import safety as _safety
+
 
 class Executor:
     """
@@ -80,7 +82,14 @@ class Executor:
             if self.safety is not None:
                 allowed, reason = self.safety.may_execute(step)
                 if not allowed:
+                    _safety.record_step("refused", step, {"error": reason})
                     return {"status": "step_refused", "error": reason, "step": step}
+
+            # A step that cannot be recorded does not run (step recorders,
+            # safety.py: the evidence log of an engagement).
+            unrecorded = _safety.record_step("start", step)
+            if unrecorded:
+                return {"status": "step_refused", "error": unrecorded, "step": step}
 
             tool = self.tool_registry.get(tool_name)
 
@@ -88,6 +97,7 @@ class Executor:
             try:
                 tool_result = tool.run(args)
             except Exception as e:
+                _safety.record_step("done", step, {"error": f"crashed: {e}"})
                 return {
                     "status": "step_error",
                     "error": f"Tool '{tool_name}' crashed: {e}",
@@ -96,6 +106,7 @@ class Executor:
 
             # Validate tool result structure
             if not self._validate_tool_result(tool_result):
+                _safety.record_step("done", step, {"error": "malformed result"})
                 return {
                     "status": "step_error",
                     "error": f"Tool '{tool_name}' returned malformed result",
@@ -112,6 +123,10 @@ class Executor:
 
             # Add memory snapshot
             self.memory.add_snapshot(step, results[step_id])
+            # Recorded after it ran; a failure here is reported with the step.
+            late = _safety.record_step("done", step, results[step_id])
+            if late:
+                results[step_id]["stderr"] += f"\ncodebud: {late}"
 
             # Stop on error
             if tool_result.get("returncode", 0) != 0:

@@ -500,6 +500,35 @@ def provided(what: str) -> bool:
     return any(_PROVIDES.get(check) == what for check in _STEP_CHECKS)
 
 
+# Step recorders (the security layer's evidence log): told about every
+# step the executor runs or refuses. ``recorder(event, step, result)``,
+# event "start" (before the step runs: a recorder that fails then keeps
+# the step from running, so nothing runs unrecorded), "done" (with its
+# result) or "refused" (result: {"error": why}).
+_STEP_RECORDERS: list = []
+
+
+def add_step_recorder(recorder) -> None:
+    _STEP_RECORDERS.append(recorder)
+
+
+def remove_step_recorder(recorder) -> None:
+    if recorder in _STEP_RECORDERS:
+        _STEP_RECORDERS.remove(recorder)
+
+
+def record_step(
+    event: str, step: dict[str, Any], result: dict[str, Any] | None = None
+) -> str | None:
+    """Tell every recorder; the first failure, as a reason, or None."""
+    for recorder in list(_STEP_RECORDERS):
+        try:
+            recorder(event, step, result)
+        except Exception as exc:  # noqa: BLE001 - a failing record is reported
+            return f"a step recorder failed ({type(exc).__name__}: {exc})"
+    return None
+
+
 def _engagement_refusal(step: dict[str, Any]) -> str | None:
     """A profile with ``engagement = true`` runs no command or web search
     unless an engagement's scope check is registered: its tools reach
