@@ -247,29 +247,127 @@ _NMAP_PATTERNS = (r"^-s[A-HJ-Za-z]{1,2}$", r"^-P[A-Za-z][0-9,\-]*$", r"^-T[0-5]$
                   r"^-p[0-9TUS:,\-]+$")  # fmt: skip
 
 
-# nmap scripts that reach past the command line: broadcast-* send to the
-# whole local network (they are in the broadcast, discovery and partly
-# safe categories), targets-* with newtargets add the hosts they find as
-# targets, external ones contact third-party services. Selected by name,
-# category, glob or boolean expression -- refused on any mention.
-_NMAP_WIDE_CATEGORIES = {"broadcast", "discovery", "safe", "external", "all"}
-_NMAP_WIDE_SAMPLES = ("broadcast-ping", "targets-sniffer", "whois-ip")
+# nmap scripts (scanning tier, T1). Which scripts an expression selects
+# is worked out from nmap's own script database, the way nmap does it:
+# names, categories, globs, "all", and/or/not, commas. Refused when any
+# selected script is in a category beyond scanning -- exploit, brute, dos,
+# intrusive, fuzzer -- or reaches past the command line: broadcast
+# (sends to the whole local network), external (contacts third parties;
+# even "default" holds two, http-open-proxy and socks-open-proxy), and
+# targets-* (adds the hosts it finds as targets). -sC and -A run
+# "default". A script given as a file runs code nobody checked. Without
+# the database no script can be judged, so --script, -sC and -A are
+# refused. -sV runs the "version" scripts and is allowed, although nmap
+# marks one of them, iec61850-mms (ICS, port 102), intrusive.
+_NMAP_SCRIPT_DBS = (
+    "/usr/share/nmap/scripts/script.db",
+    "/usr/local/share/nmap/scripts/script.db",
+    "/opt/homebrew/share/nmap/scripts/script.db",
+)
+_NMAP_REFUSED_CATEGORIES = frozenset(
+    {"exploit", "brute", "dos", "intrusive", "fuzzer", "broadcast", "external"}
+)
+_NMAP_ENTRY = re.compile(r'Entry \{ filename = "([^"]+)\.nse", categories = \{([^}]*)\} \}')
+
+
+def _nmap_scripts() -> dict[str, frozenset] | None:
+    """{script name: its categories} from nmap's script.db, or None."""
+    for path in _NMAP_SCRIPT_DBS:
+        try:
+            with open(path, encoding="utf-8", errors="replace") as f:
+                text = f.read()
+        except OSError:
+            continue
+        return {
+            name: frozenset(re.findall(r'"([^"]+)"', categories))
+            for name, categories in _NMAP_ENTRY.findall(text)
+        }
+    return None
+
+
+def _nmap_select(expression: str, scripts: dict[str, frozenset]) -> set[str]:
+    """The scripts ``expression`` selects (nmap --script grammar)."""
+    tokens = re.findall(r"\(|\)|,|[^\s,()]+", expression)
+    position = 0
+
+    def peek():
+        return tokens[position].lower() if position < len(tokens) else None
+
+    def take():
+        nonlocal position
+        position += 1
+        return tokens[position - 1]
+
+    def atom(word: str) -> set[str]:
+        name = word.lstrip("+").lower()
+        name = name[:-4] if name.endswith(".nse") else name
+        if "/" in name or "\\" in name:
+            raise TargetError(
+                f"nmap --script {word}: a script file runs code codebud has not checked"
+            )
+        if name == "all":
+            return set(scripts)
+        if any(c in name for c in "*?["):
+            chosen = {s for s in scripts if fnmatch.fnmatch(s, name)}
+        else:
+            chosen = {s for s, categories in scripts.items() if name in categories}
+            chosen |= {name} if name in scripts else set()
+        if not chosen:
+            raise TargetError(f"nmap --script {word}: not a script or category nmap knows")
+        return chosen
+
+    def factor() -> set[str]:
+        word = peek()
+        if word is None or word in (")", ",", "and", "or"):
+            raise TargetError(f"nmap --script {expression!r} cannot be read")
+        take()
+        if word == "not":
+            return set(scripts) - factor()
+        if word == "(":
+            chosen = union()
+            if peek() != ")":
+                raise TargetError(f"nmap --script {expression!r} cannot be read")
+            take()
+            return chosen
+        return atom(tokens[position - 1])
+
+    def conjunction() -> set[str]:
+        chosen = factor()
+        while peek() == "and":
+            take()
+            chosen &= factor()
+        return chosen
+
+    def union() -> set[str]:
+        chosen = conjunction()
+        while peek() in ("or", ","):
+            take()
+            chosen |= conjunction()
+        return chosen
+
+    chosen = union()
+    if position != len(tokens):
+        raise TargetError(f"nmap --script {expression!r} cannot be read")
+    return chosen
 
 
 def _nmap_script_problem(expression: str) -> str | None:
-    for token in re.split(r"[\s,()]+", expression.lower()):
-        if not token or token in ("and", "or", "not", "default"):
-            continue
-        if token in _NMAP_WIDE_CATEGORIES:
-            return f"nmap --script {token} reaches hosts past the command line"
-        if token.startswith(("broadcast", "targets-")):
-            return f"nmap --script {token} reaches hosts past the command line"
-        if any(c in token for c in "*?[") and any(
-            fnmatch.fnmatch(sample, token)
-            for sample in (*_NMAP_WIDE_SAMPLES, *_NMAP_WIDE_CATEGORIES)
-        ):
-            return f"nmap --script {token} could select scripts that reach past the command line"
-    return None
+    scripts = _nmap_scripts()
+    if scripts is None:
+        return "nmap scripts are judged by nmap's script.db, which was not found"
+    beyond = sorted(
+        s
+        for s in _nmap_select(expression, scripts)
+        if scripts[s] & _NMAP_REFUSED_CATEGORIES or s.startswith(("broadcast", "targets-"))
+    )
+    if not beyond:
+        return None
+    hint = ' (--script "default and not external" runs the rest)' if "default" in expression else ""
+    shown = ", ".join(beyond[:3]) + (f" and {len(beyond) - 3} more" if len(beyond) > 3 else "")
+    return (
+        f"nmap --script {expression} selects scripts beyond scanning or past the command "
+        f"line ({shown}){hint}"
+    )
 
 
 def _nmap(args):
@@ -279,10 +377,10 @@ def _nmap(args):
             raise TargetError("nmap -iR scans random hosts, outside any scope")
         if option in ("--resume", "--script-args-file"):
             raise TargetError(f"nmap {option} reads from a file that cannot be judged")
-        if option == "--script":
-            problem = _nmap_script_problem(word)
+        if option in ("--script", "-sC", "-A"):
+            problem = _nmap_script_problem(word if option == "--script" else "default")
             if problem:
-                raise TargetError(problem)
+                raise TargetError(problem.replace("--script default", option))
         if option == "--script-args" and "newtargets" in word.lower():
             raise TargetError(
                 "nmap --script-args newtargets adds the hosts scripts find as targets"

@@ -24,6 +24,39 @@ out_of_scope = ["10.0.5.0/24", "10.0.9.9"]
 """
 
 
+# A small nmap script.db with the categories nmap gives these scripts.
+SCRIPT_DB = {
+    "http-title": ("default", "discovery", "safe"),
+    "ssl-cert": ("default", "discovery", "safe"),
+    "http-open-proxy": ("default", "discovery", "external", "safe"),
+    "banner": ("discovery", "safe"),
+    "broadcast-ping": ("broadcast", "discovery", "safe"),
+    "broadcast-dhcp-discover": ("broadcast", "safe"),
+    "targets-sniffer": ("broadcast", "discovery", "safe"),
+    "whois-ip": ("discovery", "external", "safe"),
+    "smb-vuln-ms17-010": ("vuln", "safe"),
+    "http-shellshock": ("exploit", "vuln", "intrusive"),
+    "ftp-brute": ("brute", "intrusive"),
+    "http-slowloris": ("dos", "intrusive", "vuln"),
+    "iec61850-mms": ("discovery", "intrusive", "version"),
+}
+
+
+@pytest.fixture(autouse=True)
+def script_db(tmp_path, monkeypatch):
+    path = tmp_path / "script.db"
+    path.write_text(
+        "".join(
+            f'Entry {{ filename = "{name}.nse", categories = {{ '
+            + "".join(f'"{c}", ' for c in categories)
+            + "} }\n"
+            for name, categories in SCRIPT_DB.items()
+        )
+    )
+    monkeypatch.setattr("codebud_sec.scope._NMAP_SCRIPT_DBS", (str(path),))
+    return path
+
+
 @pytest.fixture
 def engagement(tmp_path):
     path = tmp_path / "acme.toml"
@@ -283,9 +316,12 @@ def test_nmap_scripts_that_reach_past_the_command_line_are_refused(guard, cmd):
 @pytest.mark.parametrize(
     "cmd",
     [
-        "nmap -sC 10.0.0.5",
+        "nmap -sV 10.0.0.5",
         "nmap --script http-title,ssl-cert 10.0.0.5",
-        "nmap --script default 10.0.0.5",
+        "nmap --script 'default and not external' 10.0.0.5",
+        "nmap --script smb-vuln-ms17-010 10.0.0.5",
+        "nmap --script '(vuln and safe) or banner' 10.0.0.5",
+        "nmap --script +http-title.nse 10.0.0.5",
     ],
 )
 def test_ordinary_scripts_run(guard, cmd):
@@ -312,3 +348,45 @@ def test_the_guard_provides_the_engagement(guard):
     assert safety.provided("engagement")
     guard.deactivate()
     assert not safety.provided("engagement")
+
+
+# --- scripts judged by nmap's script database (PR 5) -----------------------------
+
+
+@pytest.mark.parametrize(
+    ("cmd", "why"),
+    [
+        ("nmap --script http-shellshock 10.0.0.5", "exploit"),
+        ("nmap --script ftp-brute 10.0.0.5", "brute"),
+        ("nmap --script http-slowloris 10.0.0.5", "dos"),
+        ("nmap --script vuln 10.0.0.5", "the category holds exploit and dos scripts"),
+        ("nmap --script intrusive 10.0.0.5", "intrusive"),
+        ("nmap --script 'http-*' 10.0.0.5", "a glob holding exploits"),
+        ("nmap --script 'not safe' 10.0.0.5", "everything but safe"),
+        ("nmap --script 'vuln and not dos' 10.0.0.5", "still holds the exploit"),
+        ("nmap --script ./custom.nse 10.0.0.5", "a script file"),
+        ("nmap --script /tmp/x 10.0.0.5", "a script path"),
+        ("nmap --script nosuch 10.0.0.5", "unknown to nmap"),
+        ("nmap --script '(default' 10.0.0.5", "unreadable"),
+    ],
+)
+def test_scripts_beyond_scanning_are_refused(guard, cmd, why):
+    reason = _engine().refusal_reason(_step(cmd))
+    assert reason is not None and "engagement scope" in reason, f"{cmd} ({why})"
+
+
+@pytest.mark.parametrize("flag", ["-sC", "-A"])
+def test_default_scripts_hold_external_ones(guard, flag):
+    """nmap's own default category holds http-open-proxy and
+    socks-open-proxy, which nmap marks external."""
+    reason = _engine().refusal_reason(_step(f"nmap {flag} 10.0.0.5"))
+    assert reason is not None and "http-open-proxy" in reason
+    assert "default and not external" in reason
+
+
+def test_without_nmaps_script_database_no_script_is_judged(guard, monkeypatch):
+    monkeypatch.setattr("codebud_sec.scope._NMAP_SCRIPT_DBS", ("/nonexistent/script.db",))
+    for cmd in ("nmap --script http-title 10.0.0.5", "nmap -sC 10.0.0.5"):
+        reason = _engine().refusal_reason(_step(cmd))
+        assert reason is not None and "script.db" in reason, cmd
+    assert _engine().refusal_reason(_step("nmap -sV 10.0.0.5")) is None

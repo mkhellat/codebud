@@ -167,7 +167,8 @@ tests/
 │                                beside codebud, not imported, not shadowed
 ├── test_scope.py                engagement scope: targets read per tool,
 │                                third parties, ranges, active refused,
-│                                passive asked
+│                                passive asked; nmap scripts judged by
+│                                nmap's script.db
 ├── test_scope_web.py            engagement scope for web and TLS tools:
 │                                URL hosts read strictly, proxies, redirects
 │                                and fuzz words in the host refused
