@@ -30,7 +30,7 @@ import re
 import shlex
 from typing import Any
 
-from . import privacy
+from . import forensic, privacy
 from .modes import DEFAULT_MODE, step_allowed
 
 # The policy in effect -- yours, adjusted by the project's -- comes from
@@ -583,7 +583,7 @@ class SafetyEngine:
         """Program names some refusal rule applies to (family names)."""
         refused = getattr(self, "refused", {})
         return {
-            "find", "python", "git", *_AWKS, *_SEDS, *_REFUSED_FLOOR,
+            "find", "python", "git", *_AWKS, *_SEDS, *_REFUSED_FLOOR, *forensic.PROGRAMS,
             *(_program_name(name) for name in refused),
         }  # fmt: skip
 
@@ -597,6 +597,9 @@ class SafetyEngine:
         forbidden = _forbidden_argument([program, *args])
         if forbidden:
             return f"{shown} {forbidden} is never allowed (it can run or delete anything)"
+        evidence = forensic.argument_refusal(program, args)
+        if evidence:
+            return f"{shown} refused: {evidence}"
         if program == "tar" and args and not args[0].startswith("-"):
             # tar's old style: a dash-less first argument is a cluster of
             # options (tar cIf a.tar . is tar -c -I -f).

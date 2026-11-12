@@ -142,6 +142,52 @@ allowed.  A program with such rules run by @command{xargs} or
 file or from input, which cannot be checked (@code{xargs -a files.txt
 wc -l} is fine).
 
+@cindex imaging tools, rules
+@cindex dc3dd
+@cindex ewfacquire
+@cindex exiftool
+Three tools get rules a list of options cannot express.  They apply
+wherever a profile allow-lists the tool (@code{security-ir} does) and
+keep it to working on evidence as NIST SP 800-86 (section 4.2.2) and the
+ACPO principles ask: on copies, hashed, logged, never writing to a
+device or outside the project.
+
+@table @command
+@item dc3dd
+Its input (@option{if=}, @option{ifs=}) must be an image file inside the
+project, never a device; every output and log (@option{of=},
+@option{hof=}, @option{ofs=}, @option{hofs=}, @option{log=},
+@option{hlog=}, @option{mlog=}) inside the project; @option{hash=} and
+@option{log=} or @option{hlog=} required.  @option{wipe=},
+@option{hwipe=}, @option{pat=} and @option{tpat=} are refused, and so is
+any key not known to be safe.
+@item ewfacquire
+Unattended (@option{-u}), since nobody can answer its prompts in a step,
+and so with the case metadata on the command line: @option{-C} (case),
+@option{-e} (examiner), @option{-E} (evidence number), @option{-D}
+(description); @option{-d} including @code{sha256}; a log
+(@option{-l}); the target (@option{-t}) and any second target
+(@option{-2}) inside the project; the source one image file inside the
+project.  Options not known to be safe are refused.
+@item exiftool
+Only reading.  Refused: an argument with @samp{=}, @samp{<} or @samp{>}
+(writing, copying or renaming tags), one with @samp{$@{} (Perl code),
+and the options that write, run code or read arguments from a file
+(@option{-o}, @option{-overwrite_original}, @option{-tagsFromFile},
+@option{-geotag}, @option{-p}, @option{-if}, @option{-config},
+@option{-api}, @option{-@@}, @option{-w}, @option{-execute}, @dots{}).
+Read options and tag names (@code{exiftool -a -G1 -s},
+@code{exiftool -Artist photo.jpg}) are fine.
+@end table
+
+@noindent
+Every output, target and log must be a new file: one that already
+exists --- the input image, another piece of evidence, an earlier
+@file{.E01} --- is refused, so an imaging step can never overwrite
+evidence.  The paths are judged with symbolic links followed, so a link
+inside the project that points out of it does not count as inside.  These rules
+were written from the tools' manual pages.
+
 @cindex refused_arguments.json
 You can refuse more with @file{refused_arguments.json}, which maps a
 program to the options it may never be given:

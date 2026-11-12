@@ -129,3 +129,46 @@ def test_iso_timestamps_have_an_allowed_spelling(ir):
     """-Iseconds holds an "s" in a short-option cluster and is refused by
     the conservative rule; the long spelling does the same and runs."""
     assert _engine().refusal_reason(_step("date --iso-8601=seconds")) is None
+
+
+@pytest.fixture
+def case(tmp_path, monkeypatch):
+    root = tmp_path / "case"
+    (root / "evidence").mkdir(parents=True)
+    (root / "evidence" / "disk.raw").write_bytes(b"\0" * 512)
+    monkeypatch.chdir(root)
+    return root
+
+
+def test_imaging_an_image_file_is_allowed_and_asked(ir, case):
+    engine = _engine()
+    for cmd in (
+        "dc3dd if=evidence/disk.raw of=evidence/copy.raw hash=sha256 log=evidence/copy.log",
+        "ewfacquire -u -C C1 -e me -E E1 -D disk -d sha256 -l evidence/a.log -t evidence/disk evidence/disk.raw",
+    ):
+        assert engine.refusal_reason(_step(cmd)) is None, cmd
+        assert engine.is_powerful(_step(cmd)), cmd
+
+
+def test_reading_images_and_metadata_is_harmless(ir, case):
+    engine = _engine()
+    for cmd in (
+        "ewfverify -d sha256 evidence/disk.E01",
+        "ewfinfo evidence/disk.E01",
+        "exiftool -a -G1 evidence/",
+    ):
+        assert engine.refusal_reason(_step(cmd)) is None, cmd
+        assert not engine.is_powerful(_step(cmd)), cmd
+
+
+@pytest.mark.parametrize(
+    "cmd",
+    [
+        "dc3dd if=/dev/sda of=evidence/x.raw hash=sha256 log=evidence/x.log",
+        "dc3dd wipe=/dev/sda",
+        "exiftool -overwrite_original -Artist=x evidence/a.jpg",
+        "dd if=/dev/sda of=evidence/x.raw",
+    ],
+)
+def test_acquiring_from_devices_and_writing_metadata_are_refused(ir, case, cmd):
+    assert _engine().refusal_reason(_step(cmd)) is not None, cmd

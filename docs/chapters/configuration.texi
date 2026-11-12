@@ -457,13 +457,16 @@ text and binary viewers (@command{cat}, @command{grep}, @command{rg},
 (@command{ps}, @command{pstree}, @command{lsof}, @command{who},
 @command{w}, @command{last}, @command{lastb}), @command{journalctl},
 @command{ausearch}, @command{aureport}, reading a capture
-(@command{tcpdump -r}, @command{tshark -r}), @command{find},
-@command{lsblk}, @command{date}.  Collecting copies and the forensic
+(@command{tcpdump -r}, @command{tshark -r}), reading images and
+metadata (@command{ewfverify}, @command{ewfinfo}, @command{exiftool}),
+@command{find}, @command{lsblk}, @command{date}.  Collecting copies and the forensic
 tools are powerful and asked for every time: @command{cp},
 @command{tar}, @command{yara}, Volatility (@command{vol},
 @command{vol3}), the Sleuth Kit (@command{fls}, @command{icat},
 @command{mmls}, @command{istat}, @command{fsstat}) and plaso
-(@command{log2timeline.py}, @command{psort.py}, @command{pinfo.py}).
+(@command{log2timeline.py}, @command{psort.py}, @command{pinfo.py}),
+and imaging image files that are in the project (@command{dc3dd},
+@command{ewfacquire}), hashed and logged (@pxref{The Safety Engine}).
 Nothing that deletes, moves, kills, changes permissions or installs is
 on it, and no trusted sequence.
 
@@ -483,7 +486,8 @@ isolation they would show the sandbox --- a falsely clean answer; use
 system bus, which steps cannot reach.  Disk and memory acquisition is
 done by you, outside Codebud, with a write-blocker where it applies
 (NIST SP 800-86 advises against imaging a whole device from a live
-system); Codebud analyses the images.
+system); Codebud analyses the images, and re-images or converts them
+(raw to E01) only as files inside the project.
 @end table
 
 @subheading Your own profiles
