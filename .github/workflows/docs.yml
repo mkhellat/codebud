@@ -62,7 +62,7 @@ jobs:
       - name: Prepare site
         run: |
           mkdir -p site
-          cp -a docs/codebud_html/. site/
+          cp -a docs/codebud.html/. site/
           cp llms.txt site/llms.txt
           touch site/.nojekyll
           test -f site/index.html
