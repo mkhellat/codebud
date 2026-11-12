@@ -381,15 +381,23 @@ def cmd_profiles(_args):
     from codebud.cli.display import _OUT_BOLD, _OUT_DIM, _OUT_RESET
 
     current = profiles.active().name
+    rows = []
     for name in profiles.available():
         try:
-            profile = profiles.get(name)
+            rows.append((name, profiles.get(name), None))
         except profiles.ProfileError as exc:
-            print(f"  {name:<14} {_OUT_DIM}unusable: {exc}{_OUT_RESET}")
+            rows.append((name, None, exc))
+    # Columns as wide as their longest entry, so a long summary does not
+    # push the descriptions out of line.
+    width = max(len(name) for name, _, _ in rows)
+    summary = max((len(p.summary()) for _, p, _ in rows if p is not None), default=0)
+    for name, profile, exc in rows:
+        if profile is None:
+            print(f"  {name:<{width}} {_OUT_DIM}unusable: {exc}{_OUT_RESET}")
             continue
         mark = f"{_OUT_BOLD}*{_OUT_RESET}" if name == current else " "
-        print(f"{mark} {name:<14} {profile.summary():<28} {profile.description}")
-        print(f"  {'':<14} {_OUT_DIM}{profile.source}{_OUT_RESET}")
+        print(f"{mark} {name:<{width}} {profile.summary():<{summary}}  {profile.description}")
+        print(f"  {'':<{width}} {_OUT_DIM}{profile.source}{_OUT_RESET}")
     print(f"\nYour own profiles: {profiles.profile_dir()}/<name>.toml")
 
 

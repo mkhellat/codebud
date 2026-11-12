@@ -1,0 +1,41 @@
+{
+  "tar": [
+    "-x",
+    "--extract",
+    "--get",
+    "-A",
+    "--catenate",
+    "--concatenate",
+    "--delete",
+    "-u",
+    "--update",
+    "-r",
+    "--append"
+  ],
+  "sort": [
+    "-o",
+    "--output"
+  ],
+  "rg": [
+    "--pre",
+    "--pre-glob"
+  ],
+  "tcpdump": [
+    "-z"
+  ],
+  "tshark": [
+    "-X"
+  ],
+  "vol": [
+    "-p",
+    "--plugin-dirs"
+  ],
+  "vol3": [
+    "-p",
+    "--plugin-dirs"
+  ],
+  "date": [
+    "-s",
+    "--set"
+  ]
+}

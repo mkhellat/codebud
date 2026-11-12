@@ -12,6 +12,7 @@ codebud integrity: the pinned manifest of models and tools (integrity.py).
 
 import os
 import sys
+from pathlib import Path
 
 from codebud import integrity
 from codebud.cli.common import plural
@@ -48,10 +49,37 @@ def _embed_model() -> str:
     return embed_model()
 
 
+def _shipped_files() -> list[Path]:
+    """Every file of the security layer's profiles (their TOML and policy files)."""
+    from codebud import profiles
+
+    directory = profiles.shipped_profile_dir()
+    if directory is None:
+        return []
+    return sorted(p for p in directory.rglob("*") if p.is_file())
+
+
+def _shipped_programs() -> set[str]:
+    """The programs the shipped profiles' allow-lists name, so they are
+    pinned whichever profile is active when you pin."""
+    from codebud import policy
+
+    programs = set()
+    for path in _shipped_files():
+        if path.name in (policy.HARMLESS_FILE, policy.POWERFUL_FILE):
+            entries = policy._commands(path) or []
+            programs |= integrity.allow_listed_programs(policy.Policy(entries, [], []))
+        elif path.name == policy.TRUSTED_SEQ_FILE:
+            sequences = policy._sequences(path) or []
+            programs |= integrity.allow_listed_programs(policy.Policy([], [], sequences))
+    return programs
+
+
 def _programs(extra) -> set[str]:
     from codebud import isolation, policy
 
     programs = integrity.allow_listed_programs(policy.effective()) | set(extra)
+    programs |= _shipped_programs()
     tool = isolation.available()
     if tool:
         programs.add(tool)  # it runs every isolated step
@@ -82,7 +110,9 @@ def _pin(models_extra, commands_extra, yes: bool) -> None:
         )
 
     manifest, missing = integrity.build(
-        {name: digests[name] for name in wanted}, _programs(commands_extra)
+        {name: digests[name] for name in wanted},
+        _programs(commands_extra),
+        files=_shipped_files(),
     )
     if missing:
         print(
@@ -101,7 +131,8 @@ def _pin(models_extra, commands_extra, yes: bool) -> None:
     integrity.save(manifest)
     count = len(manifest.binaries)
     binaries = f"{count} binar{'y' if count == 1 else 'ies'}"
-    print(f"Pinned {plural(len(manifest.models), 'model')}, {binaries} in {path}")
+    files = f", {plural(len(manifest.files), 'profile file')}" if manifest.files else ""
+    print(f"Pinned {plural(len(manifest.models), 'model')}, {binaries}{files} in {path}")
 
 
 def _verify() -> None:
@@ -115,6 +146,7 @@ def _verify() -> None:
         names.append(chat)
     problems = integrity.check_models(manifest, names, digests)
     problems += integrity.check_binaries(manifest)
+    problems += integrity.check_files(manifest)
     if problems:
         for problem in problems:
             print(f"  {problem}", file=sys.stderr)
@@ -137,6 +169,10 @@ def _show() -> None:
     print("Binaries:")
     for name, entry in sorted(manifest.binaries.items()):
         print(f"  {name:<16} {entry['sha256'][:16]}  {entry['path']}")
+    if manifest.files:
+        print("Profile files:")
+        for path, digest in sorted(manifest.files.items()):
+            print(f"  {digest[:16]}  {path}")
 
 
 def cmd_integrity(args):

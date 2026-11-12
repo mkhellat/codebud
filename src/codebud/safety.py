@@ -115,6 +115,7 @@ _REFUSED_FLOOR = {
     "tar": {
         "--to-command", "-I", "--use-compress-program", "--checkpoint-action",
         "-F", "--info-script", "--new-volume-script", "--rmt-command", "--rsh-command",
+        "--remove-files",
     },
     "rsync": {"-e", "--rsh"},
     "sort": {"--compress-program"},

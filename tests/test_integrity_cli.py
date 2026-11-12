@@ -193,3 +193,34 @@ def test_every_subcommand_is_known():
 def test_show_without_a_manifest(env, capsys):
     assert _codebud("integrity", "show") == 0
     assert "Nothing is pinned" in capsys.readouterr().out
+
+
+@pytest.fixture
+def shipped(tmp_path, monkeypatch):
+    """A shipped profile whose policy allows `extra`."""
+    from codebud import profiles
+
+    directory = tmp_path / "shipped"
+    (directory / "triage").mkdir(parents=True)
+    (directory / "triage.toml").write_text('policy = "triage"\n')
+    (directory / "triage" / "harmless_commands.json").write_text('["extra --version"]')
+    monkeypatch.setattr(profiles, "shipped_profile_dir", lambda: directory)
+    return directory
+
+
+def test_pin_covers_shipped_profiles_and_their_programs(env, shipped):
+    """Pinned under the default profile, the security profiles' own tools
+    must be pinned too, or every one of their steps would be refused."""
+    assert _codebud("integrity", "pin") == 0
+    data = _pinned()
+    assert "extra" in data["binaries"]
+    assert str(shipped / "triage.toml") in data["files"]
+    assert str(shipped / "triage" / "harmless_commands.json") in data["files"]
+
+
+def test_verify_reports_a_changed_shipped_profile(env, shipped, capsys):
+    _codebud("integrity", "pin")
+    (shipped / "triage.toml").write_text('policy = "triage"\nmode = "full-auto"\n')
+    capsys.readouterr()
+    assert _codebud("integrity", "verify") == 1
+    assert "triage.toml: contents changed" in capsys.readouterr().err

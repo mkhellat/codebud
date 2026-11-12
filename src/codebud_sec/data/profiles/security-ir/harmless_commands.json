@@ -1,0 +1,8 @@
+[
+  "cat", "head", "tail", "ls", "stat", "file", "wc", "sort", "uniq", "cut",
+  "diff", "cmp", "tr", "grep", "rg", "jq", "xxd", "hexdump", "od", "strings",
+  "readelf", "objdump", "nm", "sha256sum", "sha1sum", "md5sum", "b3sum",
+  "ps", "pstree", "lsof", "who", "w", "last", "lastb", "lastlog", "id",
+  "getent", "uname", "uptime", "date", "hostname", "lsblk", "journalctl",
+  "ausearch", "aureport", "tcpdump -r", "tshark -r", "find", "pwd", "echo"
+]

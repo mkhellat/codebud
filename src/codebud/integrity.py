@@ -45,6 +45,7 @@ class Manifest:
     models: dict[str, str] = field(default_factory=dict)  # name -> Ollama digest
     binaries: dict[str, dict[str, str]] = field(default_factory=dict)  # name -> path, sha256
     created: str = ""
+    files: dict[str, str] = field(default_factory=dict)  # path -> sha256 (shipped profiles)
 
 
 def model_name(name: str) -> str:
@@ -100,9 +101,10 @@ def allow_listed_programs(policy) -> set[str]:
     return programs
 
 
-def build(models: dict[str, str], programs, path: str | None = None):
-    """A new manifest for ``models`` (name -> digest) and ``programs``;
-    also returns the programs that were not found, sorted."""
+def build(models: dict[str, str], programs, path: str | None = None, files=()):
+    """A new manifest for ``models`` (name -> digest), ``programs`` and
+    ``files`` (hashed as they are); also returns the programs that were not
+    found, sorted."""
     binaries, missing = {}, []
     for program in sorted(set(programs)):
         real = resolve(program, path)
@@ -112,7 +114,8 @@ def build(models: dict[str, str], programs, path: str | None = None):
             binaries[program] = {"path": real, "sha256": file_sha256(real)}
     created = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
     models = {model_name(k): v for k, v in models.items()}
-    return Manifest(models, binaries, created), missing
+    hashed = {str(f): file_sha256(f) for f in sorted(map(str, files))}
+    return Manifest(models, binaries, created, hashed), missing
 
 
 def save(manifest: Manifest) -> None:
@@ -121,6 +124,7 @@ def save(manifest: Manifest) -> None:
         "created": manifest.created,
         "models": manifest.models,
         "binaries": manifest.binaries,
+        "files": manifest.files,
     }
     private_dir(paths.config_dir())
     atomic_write_text(str(manifest_path()), json.dumps(data, indent=2, sort_keys=True) + "\n")
@@ -142,7 +146,9 @@ def load() -> Manifest | None:
             f"{path}: not a version-{VERSION} integrity manifest; "
             "pin again with: codebud integrity pin"
         )
-    return Manifest(data["models"], data["binaries"], data.get("created", ""))
+    return Manifest(
+        data["models"], data["binaries"], data.get("created", ""), data.get("files", {})
+    )
 
 
 def _valid(data) -> bool:
@@ -152,6 +158,11 @@ def _valid(data) -> bool:
     if not isinstance(models, dict) or not isinstance(binaries, dict):
         return False
     if not all(isinstance(k, str) and isinstance(v, str) for k, v in models.items()):
+        return False
+    files = data.get("files", {})  # absent in manifests pinned before files were
+    if not isinstance(files, dict) or not all(
+        isinstance(k, str) and isinstance(v, str) for k, v in files.items()
+    ):
         return False
     return all(
         isinstance(v, dict) and isinstance(v.get("path"), str) and isinstance(v.get("sha256"), str)
@@ -200,7 +211,21 @@ def start_problems(manifest: Manifest, models, digests: dict[str, str] | None) -
         problems = ["cannot reach Ollama to check the model digests"]
     else:
         problems = check_models(manifest, models, digests)
-    return problems + check_binaries(manifest)
+    return problems + check_binaries(manifest) + check_files(manifest)
+
+
+def check_files(manifest: Manifest) -> list[str]:
+    """Problems with the pinned files (the security layer's profiles)."""
+    problems = []
+    for path, pinned in sorted(manifest.files.items()):
+        try:
+            now = file_sha256(path)
+        except OSError:
+            problems.append(f"{path}: missing")
+            continue
+        if now != pinned:
+            problems.append(f"{path}: contents changed")
+    return problems
 
 
 def check_binaries(manifest: Manifest, path: str | None = None) -> list[str]:

@@ -38,7 +38,8 @@ def test_every_package_data_file_is_installed():
     package = ROOT / "src"
     on_disk = {
         str(p.relative_to(package))
-        for p in (package / "codebud" / "data").rglob("*")
+        for name in ("codebud", "codebud_sec")
+        for p in (package / name / "data").rglob("*")
         if p.is_file()
     }
     assert _am_list(package / "Makefile.am", "nobase_dist_python_DATA") == on_disk

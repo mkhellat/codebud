@@ -1,0 +1,24 @@
+# security-ir: incident response and forensics on hosts you own or are
+# authorized to examine. Live triage that sees the host (observer
+# isolation) and changes nothing on it; evidence analysis on copies in
+# the project. See "Security profiles" in the manual and, for the
+# reasoning, RFC 3227 and NIST SP 800-86.
+description = "Incident response on hosts you own: live triage and evidence analysis; nothing leaves, nothing on the host changes"
+mode = "ask"
+privacy = "locked"
+isolation = "observer"
+encrypt = true
+integrity = true
+policy = "security-ir"
+prompt = """
+This is incident response on a host the operator is authorized to examine.
+Evidence must not change: never modify, move, delete or execute files of the
+host; write only inside the project (for example evidence/), and hash every
+copy you make with sha256sum.
+Collect the most volatile data first (RFC 3227): network connections and
+listening sockets (host_network), logged-in users (who, w, last), processes
+(ps, pstree, lsof), routes and ARP (host_network), the time (date); then logs
+(journalctl, /var/log) and files.
+Never use ss, netstat, ip, df, findmnt or mount: in this sandbox they show the
+sandbox, not the host. Use host_network for the network.
+"""

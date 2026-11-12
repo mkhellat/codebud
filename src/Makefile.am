@@ -68,7 +68,12 @@ nobase_dist_python_DATA = \
 	codebud/data/policy/powerful_commands.json \
 	codebud/data/policy/trusted_sequences.json \
 	codebud/data/skill/SKILL.md \
-	codebud/data/skill/agensi/SKILL.md
+	codebud/data/skill/agensi/SKILL.md \
+	codebud_sec/data/profiles/security-ir.toml \
+	codebud_sec/data/profiles/security-ir/harmless_commands.json \
+	codebud_sec/data/profiles/security-ir/powerful_commands.json \
+	codebud_sec/data/profiles/security-ir/refused_arguments.json \
+	codebud_sec/data/profiles/security-ir/trusted_sequences.json
 
 # A minimal dist-info directory, so importlib.metadata (and therefore
 # `codebud version`) knows the installed version without pip.

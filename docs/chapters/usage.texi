@@ -1052,7 +1052,10 @@ digest of the chat model (@env{OLLAMA_MODEL}) and of the embedding model
 (@env{EMBED_MODEL}), and, for every program on the allow-list and the
 isolation tool (@command{bwrap} or @command{unshare}), the file it
 resolves to on @env{PATH} (symbolic links followed) and that file's
-SHA-256.  @option{--model} and @option{--command} pin more.  Programs on
+SHA-256.  The profiles of the security layer are pinned too: every file
+of them (their TOML and policy files), and the programs their
+allow-lists name, whichever profile is active when you pin.
+@option{--model} and @option{--command} pin more.  Programs on
 the allow-list that are not installed are listed and left out.  Refuses
 when Ollama cannot be reached or the chat model is not downloaded, and
 asks before replacing an existing manifest (@option{--yes} does not ask).

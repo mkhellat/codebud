@@ -105,7 +105,8 @@ substitution is not refused
 @item @command{tar} @tab @option{--to-command}, @option{-I},
 @option{--use-compress-program}, @option{--checkpoint-action},
 @option{-F}, @option{--info-script}, @option{--new-volume-script},
-@option{--rmt-command}, @option{--rsh-command} (run programs)
+@option{--rmt-command}, @option{--rsh-command} (run programs),
+@option{--remove-files} (deletes what it archives)
 @item @command{rsync} @tab @option{-e}, @option{--rsh} (run a program)
 @item @command{sort} @tab @option{--compress-program} (runs a program)
 @item @command{journalctl} @tab @option{--rotate}, @option{--vacuum-*},
@@ -285,7 +286,9 @@ is not pinned, its digest changed, or Ollama cannot be asked;
 @item project search is on and the embedding model is not pinned or
 changed (@option{--no-rag} leaves it out);
 @item a pinned program's file changed, is gone, or the name now
-resolves to another file on @env{PATH}.
+resolves to another file on @env{PATH};
+@item a file of the security layer's profiles changed or is gone, so an
+edited profile or policy cannot loosen a security profile unnoticed.
 @end itemize
 
 @noindent
