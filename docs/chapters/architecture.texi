@@ -642,6 +642,8 @@ src/codebud_sec/               the security layer (authorized security work)
 │                      command line and checked (DNS tools, whois,
 │                      scanners, nc, web clients, fuzzers, TLS scanners);
 │                      registered with the core's safety.add_step_check()
+├── fence.py           network fence policy: which addresses a step
+│                      may reach (its targets, names resolved per step)
 └── evidence.py        hash-chained, append-only evidence log,
                        encrypted at rest (appends need no passphrase)
 

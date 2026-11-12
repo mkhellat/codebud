@@ -63,6 +63,7 @@ nobase_python_PYTHON = \
 	codebud_sec/__init__.py \
 	codebud_sec/engagement.py \
 	codebud_sec/evidence.py \
+	codebud_sec/fence.py \
 	codebud_sec/scope.py
 
 nobase_dist_python_DATA = \

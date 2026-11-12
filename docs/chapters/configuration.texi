@@ -502,7 +502,15 @@ proxies, DNS servers, addresses given to @command{curl --resolve} ---
 and refuses the step when one is out of scope, excluded, or the
 engagement window is closed.  A command it cannot read (an unknown
 option, a target list outside the project, an ambiguous URL) is refused
-too.
+too.  Scanning steps also run behind the network fence (@pxref{Isolated
+Steps}), which lets through only the addresses the step names --- its
+names resolved just before it runs --- and never an excluded one, so a
+tool that reaches further than its command line says meets a closed
+door.  Behind the fence nmap needs @option{--unprivileged} (connect
+scans), and SYN, UDP and OS scans and @command{masscan} are refused; an
+engagement file with @code{fence_scanning = false} gives them back, with
+the scope guard as their only check.  Lookups (@command{dig},
+@command{host}, @command{whois}) are not fenced.
 
 Its allow-list: reading results runs once the plan is approved
 (@command{cat}, @command{grep}, @command{rg}, @command{jq},

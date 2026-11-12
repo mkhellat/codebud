@@ -31,6 +31,7 @@ def guard(tmp_path, monkeypatch):
     path.write_text(SCOPE)
     monkeypatch.setattr(safety, "_STEP_CHECKS", [])
     monkeypatch.setattr(safety, "_STEP_NOTICES", [])
+    monkeypatch.setattr("codebud.isolation._FENCES", [])
     monkeypatch.delenv("CODEBUD_PRIVACY", raising=False)
     monkeypatch.setattr("codebud.isolation.available", lambda: "bwrap")
     g = ScopeGuard(load(path))
