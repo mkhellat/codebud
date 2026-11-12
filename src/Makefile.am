@@ -26,6 +26,7 @@ nobase_python_PYTHON = \
 	codebud/crypto.py \
 	codebud/encrypt_existing.py \
 	codebud/executor.py \
+	codebud/forensic.py \
 	codebud/fsutil.py \
 	codebud/gitsafe.py \
 	codebud/integrity.py \

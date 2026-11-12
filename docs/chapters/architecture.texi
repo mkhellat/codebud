@@ -573,6 +573,7 @@ src/codebud/                   the package
 ├── confine.py         where file tools may read and write
 ├── redact.py          mask secrets before sessions/history are saved
 ├── safety.py          SafetyEngine (policy validation)
+├── forensic.py        argument rules for dc3dd, ewfacquire, exiftool
 ├── modes.py           agent modes (ask, auto, full-auto, plan, edit)
 ├── sandbox.py         Sandbox (subprocess + timeout)
 ├── memory.py          MemoryStore (timeline persistence)

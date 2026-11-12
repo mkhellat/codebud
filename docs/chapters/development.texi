@@ -72,6 +72,8 @@ tests/
 ├── test_evidence.py             evidence log: hash chain, tamper
 │                                detection, artefact hashes, encrypted
 │                                entries (append while locked)
+├── test_forensic_rules.py       dc3dd/ewfacquire on images in the project,
+│                                hashed and logged; exiftool only reads
 ├── test_fsutil.py               atomic_write_text() / _bytes()
 ├── test_gitsafe.py              git runs none of the repository's configured
 │                                programs (fsmonitor, filters, textconv)
