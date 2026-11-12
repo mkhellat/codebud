@@ -101,6 +101,10 @@ flag (write a file); the script is parsed so an ordinary @code{w} inside a
 substitution is not refused
 @end multitable
 
+A program given by its full path (@file{/usr/bin/find}) is judged by its
+name, and behind a wrapper (@code{timeout 5 python3 -c @dots{}},
+@code{env X=1 find . -exec @dots{}}) the program it runs is judged too.
+
 When a step fails validation the entire plan is rejected and the agent
 never executes a partial plan.  A rejection caused only by the agent mode
 is reported as such (@samp{The plan uses tools not allowed in edit mode:

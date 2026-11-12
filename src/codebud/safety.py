@@ -502,6 +502,18 @@ class SafetyEngine:
     # Internal helpers
     # ------------------------------------------------------------------
 
+    def _argument_refusal(self, words: list[str]) -> str | None:
+        """Why an argument of ``words`` is never allowed, or None."""
+        if not words:
+            return None
+        # /usr/bin/find is judged as find.
+        program = words[0].rsplit("/", 1)[-1]
+        args = list(words[1:])
+        forbidden = _forbidden_argument([program, *args])
+        if forbidden:
+            return f"{program} {forbidden} is never allowed (it can run or delete anything)"
+        return None
+
     def _command_refusal(self, cmd: str) -> str | None:
         """
         Judge a shell command against the harmless/powerful lists.
@@ -522,9 +534,12 @@ class SafetyEngine:
         catastrophic = catastrophic_reason(cmd)
         if catastrophic:
             return f"{catastrophic} (refused whatever the allow-list says)"
-        forbidden = _forbidden_argument(words)
-        if forbidden:
-            return f"{words[0]} {forbidden} is never allowed (it can run or delete anything)"
+        # The command and, behind a wrapper (timeout 5, env X=1), the program
+        # the wrapper runs.
+        for judged in dict.fromkeys(map(tuple, (words, _unwrap(words)))):
+            reason = self._argument_refusal(list(judged))
+            if reason:
+                return reason
         allowed = (*self.harmless_commands, *self.powerful_commands)
         if not any(_starts_with_words(words, entry) for entry in allowed):
             return (
