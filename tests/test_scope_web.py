@@ -344,3 +344,27 @@ def test_testssl_phone_out_is_refused(project):
     """Review of #20: it contacts the CRL and OCSP servers of third parties."""
     with pytest.raises(TargetError, match="phone-out"):
         targets_of(shlex.split("testssl.sh --phone-out x app.example.com"))
+
+
+def test_gobuster_dir_needs_a_path_to_keep_words_out_of_the_host(project):
+    """Review of #20: gobuster appends each word to the URL, and without a
+    path a word like @evil.example.org would land in the authority."""
+    with pytest.raises(TargetError, match="path"):
+        targets_of(shlex.split("gobuster dir -u https://app.example.com -w words.txt"))
+    assert _hosts("gobuster dir -u https://app.example.com/ -w words.txt") == ["app.example.com"]
+
+
+@pytest.mark.parametrize(
+    "line", ["\x01//evil.example.org", "/\t/evil.example.org", " \\/evil.example.org", "HTTPS:x"]
+)
+def test_feroxbuster_wordlist_is_judged_after_the_url_cleanup(project, line):
+    """Review of #20: the URL standard strips leading control characters
+    and removes tabs, so these become //evil.example.org."""
+    (project / "bad.txt").write_text(f"admin\n{line}\n")
+    with pytest.raises(TargetError, match="line 2"):
+        targets_of(shlex.split("feroxbuster -u https://app.example.com -w bad.txt"))
+
+
+def test_feroxbuster_wordlist_words_that_reach_no_host_are_fine(project):
+    (project / "ok.txt").write_text("javascript:void(0)\nmailto:x\n/admin\nadmin\n")
+    assert _hosts("feroxbuster -u https://app.example.com -w ok.txt") == ["app.example.com"]

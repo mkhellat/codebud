@@ -446,11 +446,13 @@ def _host_port(text: str, what: str) -> str:
 
 
 def _url(url: str, targets: Targets, what: str = "URL", schemes=_WEB_SCHEMES,
-         keywords=(), default_scheme: str | None = "http") -> None:  # fmt: skip
+         keywords=(), default_scheme: str | None = "http",
+         need_path: bool = False) -> None:  # fmt: skip
     """Add the host of ``url``. A URL without a scheme gets
     ``default_scheme`` (None: the scheme is required). ``keywords`` are
     words a fuzzer replaces (FUZZ): one before the path could become any
-    host, so it is refused."""
+    host, so it is refused. ``need_path``: the tool appends words to the
+    URL, so a path must keep them out of the host."""
     scheme, sep, rest = url.partition("://")
     if not sep:
         if default_scheme is None:
@@ -468,6 +470,11 @@ def _url(url: str, targets: Targets, what: str = "URL", schemes=_WEB_SCHEMES,
     match = _AUTHORITY.match(authority)
     if not match:
         raise TargetError(f"{what} {url!r}: its host cannot be read unambiguously")
+    if need_path and not rest[len(authority) :].startswith("/"):
+        raise TargetError(
+            f"{what} {url!r}: words are appended to it, so it needs a path "
+            "(.../) to keep them out of the host"
+        )
     targets.add(match["host"], what)
 
 
@@ -742,7 +749,7 @@ def _gobuster(args):
         if mode != "dns" and option in ("-r", "--follow-redirect"):
             raise TargetError("gobuster -r follows redirects to hosts the server chooses")
         if mode != "dns" and option in ("-u", "--url"):
-            _url(word, targets, default_scheme=None)
+            _url(word, targets, default_scheme=None, need_path=mode == "dir")
         elif mode == "dns" and option in ("-d", "--domain"):
             targets.add(word, "domain")
         elif mode == "dns" and option in ("-r", "--resolver"):
@@ -814,14 +821,20 @@ _FEROX_FLAGS = {
     "--force-recursion", "--dont-extract-links", "-h", "--help", "-V", "--version",
     "--no-state",
 }  # fmt: skip
-_JOIN_ESCAPE = re.compile(r"^(//|\\\\|/\\|\\/|[A-Za-z][A-Za-z0-9+.-]*:)")
+# After the URL standard's clean-up (WHATWG URL: leading and trailing C0
+# controls and spaces stripped, tabs and newlines removed anywhere), a
+# word starting // or with a backslash in their place, or with a special
+# scheme that reaches a host, would replace the host when joined.
+_JOIN_ESCAPE = re.compile(r"^([/\\]{2}|(https?|ftp|wss?):)", re.IGNORECASE)
+_C0_AND_SPACE = "".join(map(chr, range(0x21)))
 
 
 def _wordlist_problem(path: str) -> str | None:
     try:
         with open(path, encoding="utf-8", errors="replace") as f:
             for number, line in enumerate(f, 1):
-                if _JOIN_ESCAPE.match(line.strip()):
+                word = re.sub(r"[\t\n\r]", "", line).strip(_C0_AND_SPACE)
+                if _JOIN_ESCAPE.match(word):
                     return f"line {number} ({line.strip()!r}) would leave the target host"
     except OSError as exc:
         return f"cannot be read ({exc.strerror})"
