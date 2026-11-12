@@ -121,15 +121,31 @@ def recipient() -> str:
     return (key_dir() / RECIPIENT_FILE).read_text().strip()
 
 
+_SLOW_RETRIES = 3
+
+
 def _open_identity(passphrase: str):
     pyrage = _pyrage()
     _require_key()
     _harden_process()  # the passphrase and the secret key are about to be in memory
     sealed = (key_dir() / IDENTITY_FILE).read_bytes()
-    try:
-        secret = pyrage.passphrase.decrypt(sealed, passphrase)
-    except pyrage.DecryptError as exc:
-        raise CryptoError("wrong passphrase (or a damaged key file)") from exc
+    # age sets the passphrase's work factor from this machine's speed when
+    # sealing, and refuses one far above its speed when opening, measured
+    # again each time: on a busy or throttled moment a correct passphrase is
+    # refused. Try again a few times, and never call that a wrong passphrase.
+    for _attempt in range(_SLOW_RETRIES):
+        try:
+            secret = pyrage.passphrase.decrypt(sealed, passphrase)
+            break
+        except pyrage.DecryptError as exc:
+            if "excessive work" not in str(exc).lower():
+                raise CryptoError("wrong passphrase (or a damaged key file)") from exc
+    else:
+        raise CryptoError(
+            "this machine was slower just now than when the key was sealed, and age "
+            "refuses a passphrase it estimates would take too long to check here; the "
+            "passphrase may well be right -- try again, ideally with the machine less busy"
+        )
     return pyrage.x25519.Identity.from_str(secret.decode())
 
 
