@@ -472,6 +472,45 @@ def egress_reason(step: dict[str, Any]) -> str | None:
     return None
 
 
+# Extra checks registered by an optional layer (the security layer's scope
+# check, when an engagement is active): the core asks them without
+# knowing what they are. A check returns why a step is refused (or None);
+# a notice returns why it must be confirmed (or None).
+_STEP_CHECKS: list = []
+_STEP_NOTICES: list = []
+
+
+def add_step_check(check) -> None:
+    _STEP_CHECKS.append(check)
+
+
+def remove_step_check(check) -> None:
+    if check in _STEP_CHECKS:
+        _STEP_CHECKS.remove(check)
+
+
+def add_step_notice(notice) -> None:
+    _STEP_NOTICES.append(notice)
+
+
+def remove_step_notice(notice) -> None:
+    if notice in _STEP_NOTICES:
+        _STEP_NOTICES.remove(notice)
+
+
+def _registered(hooks: list, step: dict[str, Any]) -> str | None:
+    """The first reason a registered hook gives for ``step``. A hook that
+    fails is a refusal: a broken check must never let a step through."""
+    for hook in list(hooks):
+        try:
+            reason = hook(step)
+        except Exception as exc:  # noqa: BLE001 - any failure refuses
+            return f"a registered step check failed ({type(exc).__name__}: {exc})"
+        if reason:
+            return reason
+    return None
+
+
 class SafetyEngine:
     """
     Validates steps produced by the LLM planner.
@@ -520,10 +559,12 @@ class SafetyEngine:
             if privacy.level() == "locked":
                 return "steps that need the network are not allowed at privacy level locked"
         if tool == "command":
-            return self._command_refusal(step.get("args", {}).get("cmd", ""))
-        if tool in ("file_read", "file_write", "patch"):
-            return _file_refusal(tool, step.get("args", {}))
-        return None
+            reason = self._command_refusal(step.get("args", {}).get("cmd", ""))
+        elif tool in ("file_read", "file_write", "patch"):
+            reason = _file_refusal(tool, step.get("args", {}))
+        else:
+            reason = None
+        return reason or _registered(_STEP_CHECKS, step)
 
     def is_powerful(self, step: dict[str, Any]) -> bool:
         """Return whether ``step`` is a command on the powerful list.
@@ -542,6 +583,9 @@ class SafetyEngine:
         Powerful commands run code or change files; egress steps (web
         search) send data off the machine.
         """
+        notice = _registered(_STEP_NOTICES, step)
+        if notice:
+            return notice
         if self.is_powerful(step):
             return POWERFUL_REASON
         # At privacy level "trusted" egress runs without asking; safety

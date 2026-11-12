@@ -219,6 +219,15 @@ command.}), and so is a policy rejection, naming the step and the reason
 allow-list}; @pxref{Safety Rejection}).  The same reasons are given when a
 step is refused right before it runs.
 
+@cindex step checks, registered
+An optional layer can add checks of its own: @code{add_step_check()}
+registers a function that may refuse a step, and
+@code{add_step_notice()} one that may ask for a confirmation.  The
+engine asks them after its own rules, for every step and again right
+before it runs, without knowing what they are; a check that fails with
+an error refuses the step.  The security layer's engagement scope guard
+is registered this way, so the core never imports that layer.
+
 @code{describe_rules()} returns a compact summary of the three policy
 lists, which is embedded in the planner prompt so the model can avoid
 proposing forbidden commands in the first place.
