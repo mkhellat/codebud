@@ -72,6 +72,8 @@ a safety policy you can read and change.
   security-ir, the first security profile (in codebud_sec): incident
   response on hosts you own -- locked, observer isolation, encrypted,
   integrity required, a read-only triage and forensic allow-list.
+  Imaging tools work on image files in the project only, hashed and
+  logged (dc3dd, ewfacquire), and exiftool may only read.
 
   A profile can ask for observer isolation (isolation = "observer"):
   command steps see the host's processes through a read-only /proc,

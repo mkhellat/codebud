@@ -4,5 +4,6 @@
   "readelf", "objdump", "nm", "sha256sum", "sha1sum", "md5sum", "b3sum",
   "ps", "pstree", "lsof", "who", "w", "last", "lastb", "lastlog", "id",
   "getent", "uname", "uptime", "date", "hostname", "lsblk", "journalctl",
-  "ausearch", "aureport", "tcpdump -r", "tshark -r", "find", "pwd", "echo"
+  "ausearch", "aureport", "tcpdump -r", "tshark -r", "find", "pwd", "echo",
+  "ewfverify", "ewfinfo", "exiftool"
 ]

@@ -1,4 +1,4 @@
 [
   "cp", "tar", "yara", "vol", "vol3", "fls", "icat", "mmls", "istat",
-  "fsstat", "log2timeline.py", "psort.py", "pinfo.py"
+  "fsstat", "log2timeline.py", "psort.py", "pinfo.py", "dc3dd", "ewfacquire"
 ]
