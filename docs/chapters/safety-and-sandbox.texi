@@ -181,8 +181,11 @@ Read options and tag names (@code{exiftool -a -G1 -s},
 @end table
 
 @noindent
-The paths are judged with symbolic links followed, so a link inside the
-project that points out of it does not count as inside.  These rules
+Every output, target and log must be a new file: one that already
+exists --- the input image, another piece of evidence, an earlier
+@file{.E01} --- is refused, so an imaging step can never overwrite
+evidence.  The paths are judged with symbolic links followed, so a link
+inside the project that points out of it does not count as inside.  These rules
 were written from the tools' manual pages.
 
 @cindex refused_arguments.json

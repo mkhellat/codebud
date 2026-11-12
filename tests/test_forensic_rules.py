@@ -176,3 +176,42 @@ def test_the_engine_applies_the_rules(project):
 def test_the_rules_hold_behind_a_wrapper(project):
     cmd = "timeout 600 dc3dd if=/dev/sda of=evidence/x hash=sha256 log=evidence/l"
     assert _engine().refusal_reason({"tool": "command", "args": {"cmd": cmd}}) is not None
+
+
+# --- outputs must be new files (review of #17) ------------------------------
+
+
+@pytest.mark.parametrize(
+    "cmd",
+    [
+        "dc3dd if=evidence/disk.raw of=evidence/disk.raw hash=sha256 log=evidence/x.log",
+        "dc3dd if=evidence/disk.raw of=evidence/report.txt hash=sha256 log=evidence/x.log",
+        "dc3dd if=evidence/disk.raw hash=sha256 log=evidence/disk.raw",
+        "dc3dd if=evidence/disk.raw hof=evidence/report.txt hash=sha256 hlog=evidence/x.log",
+    ],
+)
+def test_dc3dd_never_overwrites_a_file(project, cmd):
+    (project / "evidence" / "report.txt").write_text("findings\n")
+    reason = _refused(cmd)
+    assert reason is not None and "exists" in reason, cmd
+
+
+@pytest.mark.parametrize(
+    "change",
+    [
+        lambda c: c.replace("-l evidence/acq.log", "-l evidence/disk.raw"),
+        lambda c: c.replace("-l evidence/acq.log", "-l evidence/report.txt"),
+        lambda c: c + " -2 evidence/report.txt",
+    ],
+)
+def test_ewfacquire_never_overwrites_a_file(project, change):
+    (project / "evidence" / "report.txt").write_text("findings\n")
+    reason = _refused(change(GOOD_EWF))
+    assert reason is not None and "exists" in reason
+
+
+@pytest.mark.parametrize("segment", ["disk.E01", "disk.Ex01"])
+def test_ewfacquire_never_overwrites_an_existing_image(project, segment):
+    (project / "evidence" / segment).write_bytes(b"EVF")
+    reason = _refused(GOOD_EWF)
+    assert reason is not None and "exists" in reason

@@ -41,6 +41,17 @@ def _inside_project(path: str) -> bool:
     return os.path.commonpath([real, project]) == project
 
 
+def _new_output(path: str) -> str | None:
+    """Why ``path`` may not be written, or None: it must be inside the
+    project, not a device, and not exist yet -- so an output can never
+    overwrite the input or another piece of evidence."""
+    if not _inside_project(path):
+        return "must be inside the project, not a device"
+    if os.path.lexists(path):
+        return "exists already: outputs and logs must be new files"
+    return None
+
+
 def _image_file(path: str) -> bool:
     """An existing regular file inside the project (an image to work on)."""
     return _inside_project(path) and os.path.isfile(path)
@@ -83,8 +94,9 @@ def _dc3dd(args: list[str]) -> str | None:
                     f"{key}={value}: input must be an image file inside the project, not a device"
                 )
         elif key in _DC3DD_OUTPUT:
-            if not _inside_project(value):
-                return f"{key}={value}: output must be inside the project, not a device"
+            problem = _new_output(value)
+            if problem:
+                return f"{key}={value}: {problem}"
         elif key in _DC3DD_VALUES:
             if not _DC3DD_VALUES[key].match(value):
                 return f"{key}={value}: not an accepted value"
@@ -106,6 +118,7 @@ def _dc3dd(args: list[str]) -> str | None:
 _EWF_VALUE = {"-A", "-b", "-B", "-c", "-C", "-d", "-D", "-e", "-E", "-f", "-l", "-m",
               "-M", "-N", "-o", "-p", "-P", "-r", "-S", "-t", "-T", "-2"}  # fmt: skip
 _EWF_PATHS = {"-l", "-t", "-2"}
+_EWF_SEGMENTS = (".E01", ".Ex01", ".e01", ".s01", ".L01", ".Lx01")
 _EWF_FLAGS = {"-u", "-q", "-v", "-R", "-s", "-x", "-h", "-V"}
 _EWF_REQUIRED = {
     "-u": "unattended (-u): in a step nobody can answer its prompts",
@@ -127,8 +140,15 @@ def _ewfacquire(args: list[str]) -> str | None:
             if i + 1 >= len(args):
                 return f"{arg} needs a value"
             value = args[i + 1]
-            if arg in _EWF_PATHS and not _inside_project(value):
-                return f"{arg} {value}: must be inside the project, not a device"
+            if arg in _EWF_PATHS:
+                problem = _new_output(value)
+                if problem:
+                    return f"{arg} {value}: {problem}"
+                if arg != "-l":
+                    # A target is a base name; its segment files must be new too.
+                    existing = [value + e for e in _EWF_SEGMENTS if os.path.lexists(value + e)]
+                    if existing:
+                        return f"{arg} {value}: {existing[0]} exists already: images are never overwritten"
             given[arg] = value
             i += 2
             continue
