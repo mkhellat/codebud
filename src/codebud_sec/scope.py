@@ -831,8 +831,11 @@ def _nikto(args):
     value = {d + o for o in _NIKTO_VALUE for d in ("-", "--")}
     flags = {d + o for o in _NIKTO_FLAGS for d in ("-", "--")}
     _no_local_config("nikto", "nikto.conf")
+    tuning = None
     for option, word in _walk(args, value, flags):
         name = (option or "").lstrip("-")
+        if name == "Tuning":
+            tuning = word
         if name == "followredirects":
             raise TargetError("nikto -followredirects goes to hosts the server chooses")
         if name == "config":
@@ -849,6 +852,12 @@ def _nikto(args):
                     targets.add(_host_port(host, "target"))
         elif option is None:
             raise TargetError(f"nikto {word}: targets are given with -h")
+    # Tuning class 6 is nikto's denial-of-service tests; x inverts the list.
+    if tuning is None or (("6" in tuning) != tuning.startswith("x")):
+        raise TargetError(
+            "nikto must leave out its denial-of-service tests (tuning 6): "
+            "give -Tuning x6, or a list of classes without 6"
+        )
     return _need_targets("nikto", targets)
 
 
@@ -995,6 +1004,11 @@ def _feroxbuster(args):
             raise TargetError("feroxbuster -r follows redirects to hosts the server chooses")
         if option in ("--stdin", "--resume-from"):
             raise TargetError(f"feroxbuster {option} takes targets from elsewhere")
+        if option == "--data" and word.startswith("@"):
+            raise TargetError(
+                f"feroxbuster --data {word}: sends a file to the target; files of the "
+                "project (evidence, other engagements) do not leave for a target"
+            )
         if option in ("-w", "--wordlist"):
             wordlist = word
         elif option in ("-p", "--proxy", "-P", "--replay-proxy"):

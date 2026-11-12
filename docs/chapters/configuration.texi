@@ -523,10 +523,13 @@ though nmap marks one version script, @code{iec61850-mms}, intrusive);
 following redirects (@command{curl -L}; @command{wget} needs
 @option{--max-redirect=0} and @command{whatweb}
 @option{--follow-redirect=never}); a fuzzing keyword anywhere but the
-path; @command{masscan} faster than 1000 packets a second; sending a
-file to a target (@command{curl -T}, @code{-d @@file}, @command{wget
---post-file}); environment assignments in front of a network tool
-(@code{env HTTPS_PROXY=@dots{}}).  The profile itself refuses
+path; @command{masscan} faster than 1000 packets a second;
+@command{nikto} without @option{-Tuning} leaving out class 6, its
+denial-of-service tests (@code{-Tuning x6}); @command{nmap
+--datadir}, which would load scripts from elsewhere; sending a file to
+a target (@command{curl -T}, @code{-d @@file}, @command{wget
+--post-file}, @command{feroxbuster --data @@file}); environment
+assignments in front of a network tool (@code{env HTTPS_PROXY=@dots{}}).  The profile itself refuses
 listeners (@command{nc -l}, @command{ncat --listen}), which catch
 shells.
 @end table

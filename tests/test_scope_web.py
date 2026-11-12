@@ -94,7 +94,7 @@ NO_REDIRECTS = "--max-redirect=0"
             ["10.0.0.5", "app.example.com"],
         ),
         ("nikto -h https://app.example.com -Tuning 123 -nointeractive", ["app.example.com"]),
-        ("nikto -h 10.0.0.5 -p 8443 -ssl", ["10.0.0.5"]),
+        ("nikto -h 10.0.0.5 -p 8443 -ssl -Tuning x6", ["10.0.0.5"]),
         ("gobuster dir -u https://app.example.com/ -w words.txt -x php -t 20", ["app.example.com"]),
         (
             "gobuster dir -u https://app.example.com/ -w words.txt -d -c session=1",
@@ -217,7 +217,7 @@ def test_a_config_file_in_the_project_refuses_the_tool(project, tool, config):
     """A step could write it, adding a proxy or targets codebud never sees."""
     cmd = {
         "feroxbuster": "feroxbuster -u https://app.example.com -w words.txt",
-        "nikto": "nikto -h app.example.com",
+        "nikto": "nikto -h app.example.com -Tuning x6",
     }[tool]
     assert _hosts(cmd) == ["app.example.com"]
     (project / config).write_text('proxy = "http://evil.example.org:8080"\n')
@@ -407,3 +407,29 @@ def test_sending_a_file_to_a_target_is_refused(project, cmd):
 )
 def test_data_written_in_the_step_is_fine(project, cmd):
     assert _hosts(cmd) == ["app.example.com"]
+
+
+# --- review of #21 -----------------------------------------------------------------
+
+
+def test_feroxbuster_data_from_a_file_is_refused(project):
+    with pytest.raises(TargetError, match="sends a file"):
+        targets_of(
+            shlex.split("feroxbuster -u https://app.example.com -w words.txt --data @secrets.txt")
+        )
+    assert _hosts("feroxbuster -u https://app.example.com -w words.txt --data a=1") == [
+        "app.example.com"
+    ]
+
+
+@pytest.mark.parametrize("tuning", [None, "6", "126", "x12", "x"])
+def test_nikto_without_leaving_out_dos_is_refused(project, tuning):
+    """Review of #21: tuning class 6 is nikto's denial-of-service tests."""
+    cmd = "nikto -h app.example.com" + (f" -Tuning {tuning}" if tuning else "")
+    with pytest.raises(TargetError, match="denial-of-service"):
+        targets_of(shlex.split(cmd))
+
+
+@pytest.mark.parametrize("tuning", ["x6", "x16", "123b", "0"])
+def test_nikto_leaving_out_dos_runs(project, tuning):
+    assert _hosts(f"nikto -h app.example.com -Tuning {tuning}") == ["app.example.com"]
