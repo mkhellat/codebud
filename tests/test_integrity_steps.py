@@ -36,7 +36,9 @@ def bindir(tmp_path, monkeypatch):
         exe.chmod(0o755)
     monkeypatch.setenv("PATH", f"{d}:/usr/bin:/bin")
     # No real isolation here; a test can wrap with `wrap` instead.
-    monkeypatch.setattr("codebud.isolation.prepare", lambda argv, network=False: (argv, None))
+    monkeypatch.setattr(
+        "codebud.isolation.prepare_with_programs", lambda argv, network=False: (argv, None, [])
+    )
     return d, marks
 
 
@@ -92,7 +94,8 @@ def test_the_program_behind_a_wrapper_is_checked(bindir):
 def test_the_isolation_tool_is_checked(bindir, monkeypatch):
     d, marks = bindir
     monkeypatch.setattr(
-        "codebud.isolation.prepare", lambda argv, network=False: (["wrap", *argv], None)
+        "codebud.isolation.prepare_with_programs",
+        lambda argv, network=False: (["wrap", *argv], None, [0]),
     )
     _pin(d, ["grep"])  # the wrapper is not pinned
     result = Sandbox().run_command("grep x")
@@ -175,7 +178,8 @@ def test_the_checked_file_is_the_one_that_runs(bindir, tmp_path, monkeypatch):
     shift.write_text(f'#!/bin/sh\nPATH="{other}"; export PATH\nexec "$@"\n')
     shift.chmod(0o755)
     monkeypatch.setattr(
-        "codebud.isolation.prepare", lambda argv, network=False: ([str(shift), *argv], None)
+        "codebud.isolation.prepare_with_programs",
+        lambda argv, network=False: ([str(shift), *argv], None, [0]),
     )
     _pin(d, ["grep", str(shift)])
     result = Sandbox().run_command("grep x")

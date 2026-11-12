@@ -188,11 +188,11 @@ class Sandbox:
         words, refusal = _pin_programs(words, [0, len(words) - len(_unwrap(words))])
         if refusal:
             return {"stdout": "", "stderr": refusal, "returncode": 1}
-        argv, refusal = isolation.prepare(words, network=network)
+        argv, refusal, programs = isolation.prepare_with_programs(words, network=network)
         if refusal:
             return {"stdout": "", "stderr": refusal, "returncode": 1}
-        if argv[0] != words[0]:  # the isolation tool
-            argv, refusal = _pin_programs(argv, [0])
+        if programs:  # the isolation tool, and the fence's programs
+            argv, refusal = _pin_programs(argv, programs)
             if refusal:
                 return {"stdout": "", "stderr": refusal, "returncode": 1}
 
