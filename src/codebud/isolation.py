@@ -184,6 +184,15 @@ def prepare(argv: list[str], network: bool = False) -> tuple[list[str] | None, s
     if network and level == "locked":
         return None, privacy.locked_refusal("a step that needs the network")
     kind = available()
+    # Observer isolation is bubblewrap's or nothing: anything less would
+    # share the host's process namespace and could signal its processes.
+    observer = profiles.active().isolation == "observer"
+    if observer and kind != "bwrap":
+        return None, (
+            "this profile's observer isolation needs bubblewrap: without it a step "
+            "would share the host's process namespace and could signal (kill) its "
+            "processes; not running it."
+        )
     if kind is None:
         if level == "locked":
             return None, (
@@ -197,12 +206,6 @@ def prepare(argv: list[str], network: bool = False) -> tuple[list[str] | None, s
                 "Install bubblewrap for network-free, project-only steps."
             )
         return argv, None
-    observer = profiles.active().isolation == "observer"
-    if observer and kind != "bwrap":
-        return None, (
-            "this profile's observer isolation needs bubblewrap: with only unshare, "
-            "a step could signal (kill) the host's processes; not running it."
-        )
     if kind == "unshare" and network:
         # unshare can only cut the network; a step that needs it gets no
         # isolation at all here, so say so, as above (security review, low).

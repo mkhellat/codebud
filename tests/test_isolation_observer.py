@@ -120,3 +120,25 @@ def test_an_observer_step_cannot_read_host_process_environments(project, observe
     finally:
         victim.kill()
         victim.wait()
+
+
+@pytest.mark.parametrize("kind", [None, "unshare"])
+@pytest.mark.parametrize("level", ["private", "locked"])
+def test_observer_without_bubblewrap_is_refused_at_every_level(
+    project, observer, monkeypatch, kind, level
+):
+    """Review of #15: with no isolation tool at all, private ran the step
+    unisolated -- the least contained case let through while unshare was
+    refused."""
+    monkeypatch.setenv("CODEBUD_PRIVACY", level)
+    monkeypatch.setattr(isolation, "available", lambda: kind)
+    monkeypatch.setattr(isolation, "_warned", True)
+    argv, refusal = isolation.prepare(["ps"])
+    assert argv is None
+    assert "bubblewrap" in refusal
+
+
+def test_trusted_still_means_no_isolation(project, observer, monkeypatch):
+    monkeypatch.setenv("CODEBUD_PRIVACY", "trusted")
+    monkeypatch.setattr(isolation, "available", lambda: None)
+    assert isolation.prepare(["ps"]) == (["ps"], None)

@@ -453,7 +453,9 @@ the volatile network state RFC 3227 (section 2.1) and NIST SP 800-86
 namespace they run in, so inside a sandboxed step they show only a
 loopback interface.  @code{host_network} runs inside Codebud, like
 @code{file_read}, and reads @file{/proc/1/net/}: it opens no socket and
-needs no network.  A socket's process is found through
+needs no network.  Inside a container, @file{/proc/1/net} is the
+container's network namespace, which is the one to report there.  A
+socket's process is found through
 @file{/proc/@var{pid}/fd}, which can be read for your own processes (all
 of them as root); others show @samp{-}.
 

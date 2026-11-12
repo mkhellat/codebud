@@ -504,8 +504,11 @@ no network; the file system read-only except the project; the hidden
 directories above.  Other processes' environments and memory stay
 unreadable (the kernel refuses across the sandbox's user namespace);
 their command lines are visible, as they are to @command{ps}.  Observer
-isolation needs bubblewrap: with only @command{unshare} a step could
-signal the host's processes, so it is refused.
+isolation needs bubblewrap: without it --- only @command{unshare}, or no
+isolation tool at all --- a step would share the host's process
+namespace and could signal its processes, so it is refused, at every
+privacy level but @code{trusted} (which means no isolation, by your
+choice).
 
 @cindex environment of command steps
 @cindex step_env
