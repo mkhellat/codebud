@@ -292,3 +292,28 @@ def test_dns_brute_forcing_out_of_scope_asks(guard, project):
     assert engine.refusal_reason(step) is None
     notice = engine.confirmation_reason(step)
     assert notice is not None and "evil.example.org" in notice
+
+
+# --- review of #20 -------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "cmd",
+    [
+        "env HTTPS_PROXY=http://evil.example.org:8080 curl https://app.example.com/",
+        "env ALL_PROXY=socks5h://evil.example.org gobuster dir -u https://app.example.com/ -w w",
+        f"env WGETRC=./x wget {NO_REDIRECTS} https://app.example.com/",
+        "env HOME=. curl https://app.example.com/",
+        "env -u LANG XDG_CONFIG_HOME=. ffuf -u https://app.example.com/FUZZ -w words.txt",
+        "timeout 60 env CURL_HOME=. curl https://app.example.com/",
+    ],
+)
+def test_environment_assignments_before_a_tool_are_refused(project, cmd):
+    """Review of #20: a proxy or config set in the environment is not in
+    the tool's words."""
+    with pytest.raises(TargetError, match="before"):
+        targets_of(shlex.split(cmd))
+
+
+def test_harmless_environment_assignments_are_fine(project):
+    assert _hosts("env LANG=C LC_ALL=C TZ=UTC curl https://app.example.com/") == ["app.example.com"]

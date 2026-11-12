@@ -943,15 +943,30 @@ PARSERS = {
 }  # fmt: skip
 
 
+# An environment assignment (env NAME=value tool ...) can give a tool a
+# proxy (HTTPS_PROXY, ALL_PROXY) or a config it reads (WGETRC, CURL_HOME,
+# HOME, XDG_CONFIG_HOME) that its words do not show; only these are fine.
+_ASSIGNMENT = re.compile(r"^([A-Za-z_][A-Za-z0-9_]*)=")
+_HARMLESS_ENV = re.compile(r"^(LANG|LANGUAGE|LC_[A-Z]+|TZ|TERM|NO_COLOR|COLUMNS)$")
+
+
 def targets_of(words: list[str]) -> list[tuple[str, Targets]]:
     """(program, Targets) for every word of the command line that names a
     tool with a parser -- behind wrappers too. TargetError if any of them
-    cannot be read."""
+    cannot be read, or an environment assignment before one could change
+    where it connects."""
     found = []
     for i, word in enumerate(words):
         name = os.path.basename(word)
         name = "nc" if name.startswith("nc.") else name
         if name in PARSERS:
+            for before in words[:i]:
+                match = _ASSIGNMENT.match(before)
+                if match and not _HARMLESS_ENV.match(match[1]):
+                    raise TargetError(
+                        f"{before.split('=', 1)[0]}= before {name} could set a proxy or a "
+                        "config file codebud does not read"
+                    )
             found.append((name, PARSERS[name](words[i + 1 :])))
     return found
 
