@@ -30,6 +30,7 @@ parser here is refused. The guard is registered with the core's safety engine
 engagement; the core never imports this layer.
 """
 
+import fnmatch
 import ipaddress
 import os
 import re
@@ -244,6 +245,31 @@ _NMAP_PATTERNS = (r"^-s[A-HJ-Za-z]{1,2}$", r"^-P[A-Za-z][0-9,\-]*$", r"^-T[0-5]$
                   r"^-p[0-9TUS:,\-]+$")  # fmt: skip
 
 
+# nmap scripts that reach past the command line: broadcast-* send to the
+# whole local network (they are in the broadcast, discovery and partly
+# safe categories), targets-* with newtargets add the hosts they find as
+# targets, external ones contact third-party services. Selected by name,
+# category, glob or boolean expression -- refused on any mention.
+_NMAP_WIDE_CATEGORIES = {"broadcast", "discovery", "safe", "external", "all"}
+_NMAP_WIDE_SAMPLES = ("broadcast-ping", "targets-sniffer", "whois-ip")
+
+
+def _nmap_script_problem(expression: str) -> str | None:
+    for token in re.split(r"[\s,()]+", expression.lower()):
+        if not token or token in ("and", "or", "not", "default"):
+            continue
+        if token in _NMAP_WIDE_CATEGORIES:
+            return f"nmap --script {token} reaches hosts past the command line"
+        if token.startswith(("broadcast", "targets-")):
+            return f"nmap --script {token} reaches hosts past the command line"
+        if any(c in token for c in "*?[") and any(
+            fnmatch.fnmatch(sample, token)
+            for sample in (*_NMAP_WIDE_SAMPLES, *_NMAP_WIDE_CATEGORIES)
+        ):
+            return f"nmap --script {token} could select scripts that reach past the command line"
+    return None
+
+
 def _nmap(args):
     targets = Targets(ACTIVE)
     for option, word in _walk(args, _NMAP_VALUE, _NMAP_FLAGS, _NMAP_PATTERNS):
@@ -251,6 +277,14 @@ def _nmap(args):
             raise TargetError("nmap -iR scans random hosts, outside any scope")
         if option in ("--resume", "--script-args-file"):
             raise TargetError(f"nmap {option} reads from a file that cannot be judged")
+        if option == "--script":
+            problem = _nmap_script_problem(word)
+            if problem:
+                raise TargetError(problem)
+        if option == "--script-args" and "newtargets" in word.lower():
+            raise TargetError(
+                "nmap --script-args newtargets adds the hosts scripts find as targets"
+            )
         if option == "-iL":
             _list_file(word, targets)
         elif option == "--dns-servers":

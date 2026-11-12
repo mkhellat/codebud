@@ -254,3 +254,39 @@ def test_an_engagement_needs_isolation(guard, monkeypatch, kind):
     monkeypatch.setattr("codebud.isolation.available", lambda: kind)
     reason = _engine().refusal_reason(_step("ls", network=False))
     assert reason is not None and "isolat" in reason
+
+
+@pytest.mark.parametrize(
+    "cmd",
+    [
+        "nmap --script broadcast-dhcp-discover 10.0.0.5",
+        "nmap --script=broadcast 10.0.0.5",
+        "nmap --script discovery 10.0.0.5",  # holds the broadcast-* scripts
+        "nmap --script safe 10.0.0.5",  # so does safe
+        "nmap --script external 10.0.0.5",  # contacts third-party services
+        "nmap --script all 10.0.0.5",
+        "nmap --script 'b*' 10.0.0.5",
+        "nmap --script 'default or safe' 10.0.0.5",
+        "nmap --script targets-sniffer 10.0.0.5",
+        "nmap --script http-title --script-args newtargets 10.0.0.5",
+        "nmap --script-args=newtargets,maxdepth=2 --script http-title 10.0.0.5",
+    ],
+)
+def test_nmap_scripts_that_reach_past_the_command_line_are_refused(guard, cmd):
+    """Review of #18: broadcast scripts send to the whole local network,
+    targets-* with newtargets add the hosts they discover, external ones
+    contact third-party services."""
+    reason = _engine().refusal_reason(_step(cmd))
+    assert reason is not None and "engagement scope" in reason, cmd
+
+
+@pytest.mark.parametrize(
+    "cmd",
+    [
+        "nmap -sC 10.0.0.5",
+        "nmap --script http-title,ssl-cert 10.0.0.5",
+        "nmap --script default 10.0.0.5",
+    ],
+)
+def test_ordinary_scripts_run(guard, cmd):
+    assert _engine().refusal_reason(_step(cmd)) is None, cmd
