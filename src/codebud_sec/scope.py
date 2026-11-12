@@ -1063,7 +1063,7 @@ class ScopeGuard:
     def activate(self) -> None:
         from codebud import safety
 
-        safety.add_step_check(self.refusal)
+        safety.add_step_check(self.refusal, provides="engagement")
         safety.add_step_notice(self.notice)
 
     def deactivate(self) -> None:

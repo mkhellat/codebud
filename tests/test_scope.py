@@ -305,3 +305,10 @@ def test_local_tools_are_untouched(guard):
         {"tool": "host_network", "args": {}},
     ):
         assert _engine().refusal_reason(step) is None, step
+
+
+def test_the_guard_provides_the_engagement(guard):
+    """A profile with engagement = true runs steps only while it is active."""
+    assert safety.provided("engagement")
+    guard.deactivate()
+    assert not safety.provided("engagement")

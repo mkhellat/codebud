@@ -507,6 +507,7 @@ prompt = "Never modify files under tests/."
 encrypt = true                # turn encryption at rest on
 integrity = true              # refuse to start without a pinned manifest
 isolation = "observer"        # steps see the host's processes (read-only)
+engagement = true             # commands only inside an open engagement
 @end example
 
 @noindent
@@ -523,6 +524,11 @@ or level that does not exist, a missing policy directory --- is refused
 with a message rather than half applied.  A project cannot define or
 choose a profile, since a profile can lower the privacy level.  @code{isolation = "observer"} runs command steps with the host's
 processes in view, for live triage (@pxref{Isolated Steps}).
+@code{engagement = true} refuses every command and web search step
+unless an engagement is open, so that the security layer's scope check
+reads the hosts each step reaches; reading and writing files still
+works.  It is for profiles whose tools reach other hosts, such as
+@code{security-pentest}.
 
 
 @node Isolated Steps

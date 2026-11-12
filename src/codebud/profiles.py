@@ -18,6 +18,9 @@ named bundle of the two dials and what goes with them:
             network namespaces -- for live triage (isolation.py)
 - integrity true refuses to start without a pinned integrity manifest
             (integrity.py); with one, it is checked whatever the profile
+- engagement true refuses command and web search steps unless a step
+            check providing "engagement" is registered (safety.py) -- the
+            security layer's scope guard, when an engagement is open
 
 Built in: "default" (ask, private) and "unattended" (full-auto, trusted).
 The security layer, codebud_sec, ships more in its data/profiles/: they
@@ -52,7 +55,7 @@ PROFILE_DIR = "profiles"
 _NAME = re.compile(r"^[a-z0-9][a-z0-9_-]{0,63}$")
 _KEYS = ("description", "mode", "privacy", "policy", "prompt", "isolation")
 ISOLATIONS = ("default", "observer")
-_BOOL_KEYS = ("encrypt", "integrity")
+_BOOL_KEYS = ("encrypt", "integrity", "engagement")
 
 
 class ProfileError(Exception):
@@ -71,10 +74,12 @@ class Profile:
     encrypt: bool = False  # turn encryption at rest on
     integrity: bool = False  # refuse to start without an integrity manifest
     isolation: str = "default"  # or "observer" (isolation.py)
+    engagement: bool = False  # steps need an open engagement (safety.py)
 
     def summary(self) -> str:
         extras = (", encrypted" if self.encrypt else "") + (", pinned" if self.integrity else "")
         extras += ", observer" if self.isolation == "observer" else ""
+        extras += ", engagement" if self.engagement else ""
         return f"{self.mode}, privacy {self.privacy}" + extras
 
 
@@ -164,6 +169,7 @@ def _load_file(name: str, path: Path) -> Profile:
         data.get("encrypt", False),
         data.get("integrity", False),
         kind,
+        data.get("engagement", False),
     )
 
 

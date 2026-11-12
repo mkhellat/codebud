@@ -478,15 +478,43 @@ def egress_reason(step: dict[str, Any]) -> str | None:
 # a notice returns why it must be confirmed (or None).
 _STEP_CHECKS: list = []
 _STEP_NOTICES: list = []
+# What a registered check stands for ("engagement": the scope guard of an
+# open engagement), so that a profile can require it (profiles.py).
+_PROVIDES: dict = {}
 
 
-def add_step_check(check) -> None:
+def add_step_check(check, provides: str | None = None) -> None:
     _STEP_CHECKS.append(check)
+    if provides:
+        _PROVIDES[check] = provides
 
 
 def remove_step_check(check) -> None:
     if check in _STEP_CHECKS:
         _STEP_CHECKS.remove(check)
+    _PROVIDES.pop(check, None)
+
+
+def provided(what: str) -> bool:
+    """Whether a registered step check provides ``what``."""
+    return any(_PROVIDES.get(check) == what for check in _STEP_CHECKS)
+
+
+def _engagement_refusal(step: dict[str, Any]) -> str | None:
+    """A profile with ``engagement = true`` runs no command or web search
+    unless an engagement's scope check is registered: its tools reach
+    other hosts, and only that check reads which."""
+    from . import profiles
+
+    profile = profiles.active()
+    if not profile.engagement or step.get("tool") not in ("command", "web_search"):
+        return None
+    if provided("engagement"):
+        return None
+    return (
+        f"profile {profile.name} works only inside an open engagement, whose scope "
+        "check reads every target; open the engagement first"
+    )
 
 
 def add_step_notice(notice) -> None:
@@ -555,6 +583,9 @@ class SafetyEngine:
         tool = step.get("tool")
         if not step_allowed(self.mode, step):
             return f"{tool} is not allowed in {self.mode} mode"
+        engagement = _engagement_refusal(step)
+        if engagement:
+            return engagement
         if tool == "command" and step.get("args", {}).get("network"):
             if privacy.level() == "locked":
                 return "steps that need the network are not allowed at privacy level locked"
