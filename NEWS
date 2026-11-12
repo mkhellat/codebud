@@ -69,6 +69,10 @@ a safety policy you can read and change.
   4 high, 5 medium and 14 low issues before this release; all are fixed
   or, where agreed, documented.
 
+  A profile can ask for observer isolation (isolation = "observer"):
+  command steps see the host's processes through a read-only /proc,
+  for live triage, but still cannot signal them or reach the network.
+
   More options are refused whatever the allow-list says (nc -e, tar
   --to-command, rsync -e, journalctl --vacuum-*, ...), also behind
   wrappers such as timeout and env; refused_arguments.json files (yours,

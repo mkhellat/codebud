@@ -137,8 +137,13 @@ def _contains(directory: Path, path: Path) -> bool:
     return True
 
 
-def wrap(argv: list[str], project: Path, network: bool, kind: str) -> list[str]:
-    """``argv`` wrapped for ``kind`` of isolation."""
+def wrap(
+    argv: list[str], project: Path, network: bool, kind: str, observer: bool = False
+) -> list[str]:
+    """``argv`` wrapped for ``kind`` of isolation. ``observer`` (bwrap only):
+    the host's /proc instead of a fresh one, so the step sees the host's
+    processes and, through /proc/1/net, its sockets -- while its own process
+    namespace keeps it from signalling them and it still has no network."""
     if kind == "unshare":
         if network:
             return argv  # unshare only cuts the network
@@ -148,7 +153,8 @@ def wrap(argv: list[str], project: Path, network: bool, kind: str) -> list[str]:
     wrapped = ["bwrap", "--die-with-parent", "--new-session", "--unshare-all"]
     if network:
         wrapped.append("--share-net")
-    wrapped += ["--ro-bind", "/", "/", "--dev", "/dev", "--proc", "/proc", "--tmpfs", "/tmp"]
+    proc = ["--ro-bind", "/proc", "/proc"] if observer else ["--proc", "/proc"]
+    wrapped += ["--ro-bind", "/", "/", "--dev", "/dev", *proc, "--tmpfs", "/tmp"]
     # After the /tmp tmpfs, so a project under /tmp is still there.
     wrapped += ["--bind", str(project), str(project)]
     for directory in hidden_dirs(home):
@@ -169,7 +175,7 @@ def prepare(argv: list[str], network: bool = False) -> tuple[list[str] | None, s
     and runs it, locked refuses. Network steps are refused when locked.
     """
     global _warned
-    from codebud import privacy
+    from codebud import privacy, profiles
     from codebud.rag.indexer import project_root
 
     level = privacy.level()
@@ -191,6 +197,12 @@ def prepare(argv: list[str], network: bool = False) -> tuple[list[str] | None, s
                 "Install bubblewrap for network-free, project-only steps."
             )
         return argv, None
+    observer = profiles.active().isolation == "observer"
+    if observer and kind != "bwrap":
+        return None, (
+            "this profile's observer isolation needs bubblewrap: with only unshare, "
+            "a step could signal (kill) the host's processes; not running it."
+        )
     if kind == "unshare" and network:
         # unshare can only cut the network; a step that needs it gets no
         # isolation at all here, so say so, as above (security review, low).
@@ -202,4 +214,4 @@ def prepare(argv: list[str], network: bool = False) -> tuple[list[str] | None, s
                 "unshare is available, and it can only cut the network. Install "
                 "bubblewrap for project-only writes and hidden secrets."
             )
-    return wrap(argv, project_root(), network, kind), None
+    return wrap(argv, project_root(), network, kind, observer=observer), None

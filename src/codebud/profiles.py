@@ -13,6 +13,9 @@ named bundle of the two dials and what goes with them:
 - prompt    extra instructions for the planner
 - encrypt   true turns encryption at rest on (crypto.py); a profile can
             only turn it on, never off
+- isolation "observer" lets command steps see the host's processes (the
+            host's /proc, read-only) while keeping their own process and
+            network namespaces -- for live triage (isolation.py)
 - integrity true refuses to start without a pinned integrity manifest
             (integrity.py); with one, it is checked whatever the profile
 
@@ -43,7 +46,8 @@ else:  # pragma: no cover - Python 3.10
 DEFAULT = "default"
 PROFILE_DIR = "profiles"
 _NAME = re.compile(r"^[a-z0-9][a-z0-9_-]{0,63}$")
-_KEYS = ("description", "mode", "privacy", "policy", "prompt")
+_KEYS = ("description", "mode", "privacy", "policy", "prompt", "isolation")
+ISOLATIONS = ("default", "observer")
 _BOOL_KEYS = ("encrypt", "integrity")
 
 
@@ -62,9 +66,11 @@ class Profile:
     source: str = "built in"  # or the profile file
     encrypt: bool = False  # turn encryption at rest on
     integrity: bool = False  # refuse to start without an integrity manifest
+    isolation: str = "default"  # or "observer" (isolation.py)
 
     def summary(self) -> str:
         extras = (", encrypted" if self.encrypt else "") + (", pinned" if self.integrity else "")
+        extras += ", observer" if self.isolation == "observer" else ""
         return f"{self.mode}, privacy {self.privacy}" + extras
 
 
@@ -104,6 +110,11 @@ def _load_file(name: str, path: Path) -> Profile:
     mode = data.get("mode", "ask")
     if mode not in MODES:
         raise ProfileError(f"profile {name}: mode '{mode}' is not one of {', '.join(MODES)}")
+    kind = data.get("isolation", "default")
+    if kind not in ISOLATIONS:
+        raise ProfileError(
+            f"profile {name}: isolation '{kind}' is not one of {', '.join(ISOLATIONS)}"
+        )
     level = data.get("privacy", "private")
     if level not in LEVELS:
         raise ProfileError(f"profile {name}: privacy '{level}' is not one of {', '.join(LEVELS)}")
@@ -122,6 +133,7 @@ def _load_file(name: str, path: Path) -> Profile:
         str(path),
         data.get("encrypt", False),
         data.get("integrity", False),
+        kind,
     )
 
 
