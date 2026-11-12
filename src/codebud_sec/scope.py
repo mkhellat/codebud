@@ -21,8 +21,11 @@ inside the project. A range must fit in the scope as a whole; a name is
 never matched against addresses (that would mean resolving it, itself a
 network action).
 
-A step that declares the network with a tool that has no parser here is
-refused. The guard is registered with the core's safety engine
+Only steps that declare the network are checked: under isolation a step
+without it contacts no one (and reading "host" in a log is not running
+it). So an engagement needs isolation; without it every command step is
+refused. A step that declares the network with a tool that has no
+parser here is refused. The guard is registered with the core's safety engine
 (codebud.safety.add_step_check / add_step_notice) by whoever opens the
 engagement; the core never imports this layer.
 """
@@ -417,28 +420,30 @@ class ScopeGuard:
         """(refusal, notice) for ``step``."""
         if step.get("tool") != "command":
             return None, None
-        from codebud import privacy
+        from codebud import isolation, privacy
 
-        if privacy.level() == "trusted":
+        # A step without the network can reach no one -- only if steps really
+        # are isolated; otherwise an undeclared step has the network too.
+        if privacy.level() == "trusted" or isolation.available() is None:
             return (
-                "an engagement needs isolated steps: privacy level trusted runs them "
-                "unisolated, with the whole network",
+                "an engagement needs isolated steps (bubblewrap or user namespaces, "
+                "at privacy private or locked); without them any step has the network",
                 None,
             )
         args = step.get("args", {})
+        if not args.get("network"):
+            return None, None  # isolated without the network: contacts no one
         try:
             words = shlex.split(args.get("cmd", ""))
             found = targets_of(words)
         except (ValueError, TargetError) as exc:
             return f"engagement scope: {exc}", None
         if not found:
-            if args.get("network"):
-                return (
-                    f"engagement scope: {words[0] if words else 'this step'} needs the network, "
-                    "but codebud cannot read its targets",
-                    None,
-                )
-            return None, None
+            return (
+                f"engagement scope: {words[0] if words else 'this step'} needs the network, "
+                "but codebud cannot read its targets",
+                None,
+            )
         name = self.engagement.path.name
         for program, targets in found:
             problems = self._problems(targets)

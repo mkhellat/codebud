@@ -36,6 +36,9 @@ def guard(engagement, monkeypatch):
     monkeypatch.setattr(safety, "_STEP_CHECKS", [])
     monkeypatch.setattr(safety, "_STEP_NOTICES", [])
     monkeypatch.delenv("CODEBUD_PRIVACY", raising=False)
+    # Steps count as isolated here whatever the machine has (macOS CI has
+    # no bubblewrap); tests of the no-isolation case set it back.
+    monkeypatch.setattr("codebud.isolation.available", lambda: "bwrap")
     g = ScopeGuard(engagement)
     g.activate()
     return g
@@ -214,6 +217,7 @@ def test_a_closed_window_refuses_active_steps(tmp_path, monkeypatch):
     path.write_text(SCOPE + "starts = 2020-01-01T00:00:00Z\nends = 2020-01-02T00:00:00Z\n")
     monkeypatch.setattr(safety, "_STEP_CHECKS", [])
     monkeypatch.setattr(safety, "_STEP_NOTICES", [])
+    monkeypatch.setattr("codebud.isolation.available", lambda: "bwrap")
     ScopeGuard(load(path)).activate()
     reason = _engine().refusal_reason(_step("nmap 10.0.0.5"))
     assert reason is not None and "window" in reason
@@ -222,9 +226,31 @@ def test_a_closed_window_refuses_active_steps(tmp_path, monkeypatch):
 def test_privacy_trusted_refuses_every_command(guard, monkeypatch):
     monkeypatch.setenv("CODEBUD_PRIVACY", "trusted")
     reason = _engine().refusal_reason(_step("ls", network=False))
-    assert reason is not None and "trusted" in reason
+    assert reason is not None and "isolated steps" in reason
 
 
 def test_deactivate_removes_the_guard(guard):
     guard.deactivate()
     assert _engine().refusal_reason(_step("nmap 192.168.1.1")) is None
+
+
+# --- review of #18 -----------------------------------------------------------------
+
+
+@pytest.mark.parametrize("cmd", ["grep host /etc/hosts", "grep -c nmap auth.log", "cat nc.log"])
+def test_tool_names_as_data_in_steps_without_network_are_fine(guard, monkeypatch, cmd):
+    """An isolated step without the network contacts no one; reading "host"
+    or "nmap" in a log is not running them."""
+    monkeypatch.setattr("codebud.isolation.available", lambda: "bwrap")
+    engine = _engine()
+    engine.harmless_commands += ["grep", "cat"]
+    assert engine.refusal_reason(_step(cmd, network=False)) is None, cmd
+
+
+@pytest.mark.parametrize("kind", [None])
+def test_an_engagement_needs_isolation(guard, monkeypatch, kind):
+    """Without isolation an undeclared step has the network too, so the
+    guard could not trust the declaration: every command is refused."""
+    monkeypatch.setattr("codebud.isolation.available", lambda: kind)
+    reason = _engine().refusal_reason(_step("ls", network=False))
+    assert reason is not None and "isolat" in reason
