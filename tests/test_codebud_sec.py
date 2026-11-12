@@ -63,11 +63,15 @@ def core(monkeypatch):
     return seen
 
 
+def _log(case):
+    return cli.evidence_path(case / "acme.toml", None)
+
+
 def _entries(case):
     from codebud import crypto
 
     crypto.ensure_unlocked()
-    return evidence.entries(case / "acme.evidence.jsonl")
+    return evidence.entries(_log(case))
 
 
 def test_a_session_runs_codebud_inside_the_engagement(case, core):
@@ -82,7 +86,7 @@ def test_a_session_runs_codebud_inside_the_engagement(case, core):
 
 def test_every_step_is_in_the_encrypted_evidence_log(case, core):
     cli.main(["run", "--engagement", "acme.toml", "scan the web tier"])
-    log = case / "acme.evidence.jsonl"
+    log = _log(case)
     assert "nmap" not in log.read_text()  # sealed
     entries = _entries(case)
     kinds = [(e["kind"], e["data"].get("event") or e["data"].get("session")) for e in entries]
@@ -106,12 +110,12 @@ def test_later_sessions_append_to_the_same_log(case, core):
     assert len(entries) == 9
 
 
-def test_the_profile_and_log_can_be_chosen(case, core):
-    cli.main(
-        ["chat", "--engagement", "acme.toml", "--profile", "security-ir", "--evidence", "ir.jsonl"]
-    )
+def test_the_profile_and_log_can_be_chosen(case, core, tmp_path_factory):
+    elsewhere = tmp_path_factory.mktemp("cases") / "ir.jsonl"
+    argv = ["chat", "--engagement", "acme.toml", "--profile", "security-ir"]
+    cli.main([*argv, "--evidence", str(elsewhere)])
     assert core["argv"][:3] == ["codebud", "--profile", "security-ir"]
-    assert (case / "ir.jsonl").exists() and not (case / "acme.evidence.jsonl").exists()
+    assert elsewhere.exists() and not _log(case).exists()
 
 
 def test_codebuds_exit_status_is_kept_and_recorded(case, core):
@@ -204,7 +208,6 @@ def test_pin_is_codebud_integrity_pin(monkeypatch):
     assert seen["argv"] == ["codebud", "integrity", "pin", "--command", "nmap"]
 
 
-
 def test_a_scope_refusal_gets_its_own_hint():
     """Not the allow-list advice: no allow-list widens an engagement."""
     from codebud.cli.errors import explain
@@ -215,3 +218,39 @@ def test_a_scope_refusal_gets_its_own_hint():
     )
     explanation, fix = explain(error)
     assert "engagement" in explanation and "harmless_commands" not in fix
+
+
+# --- review of #23 -----------------------------------------------------------------
+
+
+def test_the_log_is_kept_where_steps_cannot_write(case, core):
+    """In codebud's data directory: bwrap hides it from steps, and the file
+    tools are confined to the project."""
+    from codebud import confine, paths
+
+    cli.main(["run", "--engagement", "acme.toml", "x"])
+    log = _log(case)
+    assert log.exists() and paths.data_dir() in log.parents
+    with pytest.raises(confine.ConfinementError):
+        confine.check_write(str(log))
+
+
+@pytest.mark.parametrize("inside", ["case.jsonl", "logs/case.jsonl", "."])
+def test_a_log_inside_the_project_is_refused(case, core, inside):
+    assert cli.main(["run", "--engagement", "acme.toml", "--evidence", inside, "x"]) == 2
+    assert "argv" not in core
+
+
+def test_a_changed_engagement_file_is_refused_for_an_existing_log(case, core, capsys):
+    cli.main(["run", "--engagement", "acme.toml", "x"])
+    (case / "acme.toml").write_text(SCOPE.replace("10.0.0.0/16", "0.0.0.0/0"))
+    core.clear()
+    assert cli.main(["run", "--engagement", "acme.toml", "x"]) == 2
+    assert "argv" not in core and "new log" in capsys.readouterr().err
+    assert cli.main(["evidence", "add", "acme.toml", "--engagement", "acme.toml"]) == 2
+
+
+def test_a_message_codebud_exits_with_is_shown(case, core, capsys):
+    core["exit"] = "codebud: the integrity manifest does not match"
+    assert cli.main(["run", "--engagement", "acme.toml", "x"]) == 1
+    assert "manifest does not match" in capsys.readouterr().err

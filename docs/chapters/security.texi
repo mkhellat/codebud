@@ -127,9 +127,16 @@ codebud-sec pin
 @command{verify} checks the hash chain, and with @option{--files} that
 the recorded files are unchanged.  @command{show} lists the entries.
 @command{close} ends the log: nothing can be added after it.
-@command{pin} is @command{codebud integrity pin}.  @option{--evidence
-LOG} names a log other than the default, @file{<engagement>.evidence.jsonl}
-beside the engagement file.
+@command{pin} is @command{codebud integrity pin}.
+
+The log is kept in Codebud's data directory,
+@file{~/.local/share/codebud/evidence/<engagement>-<id>.jsonl}, one per
+engagement file: steps never see that directory, so no step can change
+the log.  @option{--evidence LOG} names another place --- never one
+inside the project, which steps may write.  When a later session or
+@command{evidence add} reopens a log, its whole chain is checked (the
+passphrase is asked for that), and the engagement file must be the one
+the log was opened with: a changed scope needs a new log.
 
 
 @node The Evidence Log

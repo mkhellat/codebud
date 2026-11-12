@@ -88,7 +88,8 @@ a safety policy you can read and change.
   codebud-sec, the security layer's command: codebud-sec chat|run|plan
   --engagement FILE runs codebud inside an engagement -- its scope guard
   and network fence active, every step recorded before it runs and after
-  it ends in an encrypted, hash-chained evidence log beside the
+  it ends in an encrypted, hash-chained evidence log in codebud's data
+  directory, out of the steps' reach; a later session must use the same
   engagement file.  codebud-sec evidence add|verify|show|close keeps the
   log; codebud-sec pin is codebud integrity pin.  Scanning steps run
   behind a network fence (pasta and nftables, optional): only their

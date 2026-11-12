@@ -20,13 +20,16 @@ unless --profile names another. While it runs:
 - every step is recorded in the engagement's evidence log before it runs
   and after it ends, refused steps too (codebud.safety step recorders);
   a step that cannot be recorded does not run. The log is created
-  encrypted next to the engagement file (<name>.evidence.jsonl) unless
-  --evidence names another, and reopened, its chain checked, for later
-  sessions.
+  encrypted in codebud's data directory, which steps never see
+  (evidence/<name>-<id>.jsonl), unless --evidence names another -- never
+  one inside the project, which steps may write. Later sessions reopen
+  it: its whole chain is checked (the key is unlocked for that), and the
+  engagement file must be the one the log was opened with.
 """
 
 import argparse
 import hashlib
+import os
 import sys
 from pathlib import Path
 
@@ -76,15 +79,44 @@ class EvidenceRecorder:
 
 
 def evidence_path(engagement_file: Path, given: str | None) -> Path:
+    """The evidence log: ``given``, or one per engagement file in codebud's
+    data directory. EvidenceError for one inside the project, which steps
+    may write."""
+    from codebud import confine, paths
+
     if given:
-        return Path(given)
-    return engagement_file.with_name(engagement_file.stem + ".evidence.jsonl")
+        path = Path(given)
+        real = Path(os.path.realpath(path))
+        project = confine.project_root()
+        if real == project or project in real.parents:
+            raise evidence.EvidenceError(
+                f"{given} is inside the project, where steps can write; "
+                "keep the evidence log outside it"
+            )
+        return path
+    real = os.path.realpath(engagement_file)
+    tag = hashlib.sha256(real.encode()).hexdigest()[:12]
+    return paths.data_dir() / "evidence" / f"{engagement_file.stem}-{tag}.jsonl"
 
 
 def _open_log(engagement, path: Path) -> evidence.EvidenceLog:
-    if path.exists():
-        return evidence.EvidenceLog.open(path)
-    return evidence.EvidenceLog.create(path, engagement=engagement, encrypt=True)
+    """Create the log, or reopen it: its whole chain checked, and the
+    engagement file the same as when the log was opened."""
+    if not path.exists():
+        return evidence.EvidenceLog.create(path, engagement=engagement, encrypt=True)
+    try:
+        crypto.ensure_unlocked()
+    except crypto.CryptoError as exc:
+        raise evidence.EvidenceError(f"cannot check {path}: {exc}") from exc
+    log = evidence.EvidenceLog.open(path)
+    first = evidence.entries(path)[0].get("data", {})
+    if first.get("engagement_sha256") != evidence.file_sha256(engagement.path):
+        raise evidence.EvidenceError(
+            f"{engagement.path} is not the engagement file {path} was opened with "
+            "(it changed, or it is another one); a changed scope needs a new log "
+            "(--evidence NEW)"
+        )
+    return log
 
 
 def _fail(message: str) -> int:
@@ -101,8 +133,8 @@ def _session(args, rest: list[str]) -> int:
         return _fail(str(exc))
     if not crypto.has_key():
         return _fail("the evidence log is encrypted: create a key first (codebud key init)")
-    path = evidence_path(Path(args.engagement), args.evidence)
     try:
+        path = evidence_path(Path(args.engagement), args.evidence)
         log = _open_log(engagement, path)
     except evidence.EvidenceError as exc:
         return _fail(str(exc))
@@ -125,7 +157,11 @@ def _session(args, rest: list[str]) -> int:
     try:
         run_codebud()
     except SystemExit as exc:
-        status = exc.code if isinstance(exc.code, int) else (0 if exc.code is None else 1)
+        if isinstance(exc.code, int) or exc.code is None:
+            status = exc.code or 0
+        else:  # a message, which Python would have printed
+            print(exc.code, file=sys.stderr)
+            status = 1
     finally:
         sys.argv = saved
         safety.remove_step_recorder(recorder)
@@ -137,9 +173,9 @@ def _session(args, rest: list[str]) -> int:
 def _log_for(args) -> tuple[Path | None, object]:
     try:
         engagement = load(args.engagement)
-    except EngagementError as exc:
+        return evidence_path(Path(args.engagement), args.evidence), engagement
+    except (EngagementError, evidence.EvidenceError) as exc:
         return None, str(exc)
-    return evidence_path(Path(args.engagement), args.evidence), engagement
 
 
 def _unlock() -> str | None:
