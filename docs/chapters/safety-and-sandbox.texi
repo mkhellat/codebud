@@ -114,7 +114,9 @@ delete logs)
 @end multitable
 
 These are matched the way the programs parse their options:
-@option{--opt} and @option{--opt=@var{value}}; a short option alone, with
+@option{--opt} and @option{--opt=@var{value}}, and any abbreviation of
+a long option, which GNU programs accept (@option{--to-com} is
+@option{--to-command}); a short option alone, with
 its value attached (@option{-e/bin/sh}) or among others
 (@option{-ve}); nothing after @option{--}; and @command{tar}'s old style,
 where a first argument without a dash is a group of options

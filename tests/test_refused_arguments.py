@@ -189,3 +189,19 @@ def test_doctor_reports_a_damaged_refused_arguments_file(monkeypatch):
     passed, label, _hint = doctor.check_config_files()
     assert passed is False
     assert str(bad) in label
+
+
+@pytest.mark.parametrize(
+    ("args", "pattern", "hit"),
+    [
+        (["--to-com=sh"], "--to-command", True),  # GNU getopt_long abbreviation
+        (["--to-c", "sh"], "--to-command", True),
+        (["--vac=1G"], "--vacuum-*", True),
+        (["--to-stdout"], "--to-command", False),  # another option, not a prefix
+        (["--exec-path"], "--exec", False),
+    ],
+)
+def test_abbreviated_long_options_are_matched(args, pattern, hit):
+    """getopt_long and argparse accept any unambiguous prefix of a long
+    option: GNU tar ran a command from --to-com=... in review of #14."""
+    assert (refused_option(args, [pattern]) is not None) is hit

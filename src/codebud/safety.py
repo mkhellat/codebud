@@ -124,10 +124,19 @@ _REFUSED_FLOOR = {
 
 def _option_matches(arg: str, pattern: str) -> bool:
     """Whether the argument ``arg`` is the option ``pattern``, the way
-    programs parse options: --opt and --opt=value; -o, -ovalue and -o in
-    a cluster of short options (-vo); -iR and -iRvalue; prefix* patterns."""
+    programs parse options: --opt, --opt=value and any abbreviation of
+    --opt; -o, -ovalue and -o in a cluster of short options (-vo); -iR and
+    -iRvalue; prefix* patterns."""
+    stem = pattern[:-1] if pattern.endswith("*") else pattern
+    if arg.startswith("--") and stem.startswith("--"):
+        # getopt_long and argparse accept any unambiguous prefix of a long
+        # option (tar --to-com=sh is --to-command=sh); an ambiguous one the
+        # program rejects itself, so refusing every prefix is safe.
+        name = arg.split("=", 1)[0]
+        if len(name) > 2 and stem.startswith(name):
+            return True
     if pattern.endswith("*"):
-        return arg.startswith(pattern[:-1])
+        return arg.startswith(stem)
     if pattern.startswith("--"):
         return arg == pattern or arg.startswith(pattern + "=")
     if len(pattern) == 2:
