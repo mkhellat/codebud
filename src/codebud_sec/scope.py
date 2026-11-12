@@ -424,11 +424,26 @@ _MASSCAN_FLAGS = {
 }
 
 
+# masscan sends at --rate packets a second (100 unless given); faster than
+# this risks the availability of the client's network and hosts.
+MASSCAN_MAX_RATE = 1000
+
+
 def _masscan(args):
     targets = Targets(ACTIVE)
     for option, word in _walk(args, _MASSCAN_VALUE, _MASSCAN_FLAGS, (r"^-p[0-9U:,\-]+$",)):
         if option in ("-c", "--conf", "--resume"):
             raise TargetError(f"masscan {option} reads settings, targets included, from a file")
+        if option == "--rate":
+            try:
+                rate = float(word)
+            except ValueError:
+                raise TargetError(f"masscan --rate {word}: not a number") from None
+            if not 0 < rate <= MASSCAN_MAX_RATE:
+                raise TargetError(
+                    f"masscan --rate {word}: at most {MASSCAN_MAX_RATE} packets a second, "
+                    "so the scan does not take the client's network down"
+                )
         if option in ("-iL", "--includefile"):
             _list_file(word, targets)
         elif option == "--range" or option is None:
@@ -642,6 +657,19 @@ _CURL_PATTERNS = (r"^-X[A-Z]+$",)
 _CONNECT_TO = re.compile(r"^(\[[^\]]*\]|[^:]*):([^:]*):(\[[^\]]*\]|[^:]*):(.*)$")
 
 
+def _curl_sends_a_file(option, word) -> bool:
+    """Whether ``option word`` makes curl send the contents of a file."""
+    if option in ("-T", "--upload-file"):
+        return True
+    if option in ("-d", "--data", "--data-binary", "--json", "-H", "--header"):
+        return word.startswith("@")
+    if option == "--data-urlencode":  # @file or name@file
+        return bool(re.match(r"^[^=]*@", word))
+    if option in ("-F", "--form"):  # name=@file or name=<file
+        return bool(re.search(r"=[@<]", word))
+    return False
+
+
 def _curl(args):
     targets = Targets(ACTIVE)
     urls, globoff = [], False
@@ -652,6 +680,11 @@ def _curl(args):
             raise TargetError("curl -K reads options, URLs included, from a file")
         if option in ("--unix-socket", "--abstract-unix-socket"):
             raise TargetError(f"curl {option} talks to a local service, not a target")
+        if _curl_sends_a_file(option, word):
+            raise TargetError(
+                f"curl {option} {word}: sends a file to the target; files of the project "
+                "(evidence, other engagements) do not leave for a target"
+            )
         if option in ("-g", "--globoff"):
             globoff = True
         elif option in ("-x", "--proxy", "--preproxy"):
@@ -719,6 +752,11 @@ def _wget(args):
             )
         if option in ("-i", "--input-file", "-B", "--base"):
             raise TargetError(f"wget {option} takes URLs from a file")
+        if option in ("--post-file", "--body-file"):
+            raise TargetError(
+                f"wget {option}: sends a file to the target; files of the project "
+                "(evidence, other engagements) do not leave for a target"
+            )
         if option in ("-H", "--span-hosts", "-D", "--domains"):
             raise TargetError(f"wget {option} lets it go to other hosts")
         if option == "--max-redirect":
@@ -1048,12 +1086,35 @@ def _testssl(args):
     return targets
 
 
+# whois (GNU/Linux whois): one query to a registry's server -- passive,
+# like a DNS lookup; a server given with -h is judged as a target.
+_WHOIS_VALUE = {"-h", "--host", "-p", "--port", "-i", "-T", "-s", "-g", "-q", "-t", "-v"}
+_WHOIS_FLAGS = {"-H", "-I", "--verbose", "--no-recursion", "-l", "-L", "-m", "-M", "-c", "-x",
+                "-b", "-B", "-G", "-d", "-r", "-R", "-a", "-K", "--help", "--version"}  # fmt: skip
+
+
+def _whois(args):
+    targets = Targets(PASSIVE)
+    queries = []
+    for option, word in _walk(args, _WHOIS_VALUE, _WHOIS_FLAGS):
+        if option in ("-h", "--host"):
+            targets.add(_host_port(word, "whois server"), "whois server")
+        elif option is None:
+            queries.append(word)
+    if len(queries) != 1:
+        raise TargetError("whois takes one query")
+    query = queries[0]
+    if not re.fullmatch(r"(?i)AS\d+", query):  # an AS number names no host
+        targets.add(query, "lookup")
+    return targets
+
+
 PARSERS = {
     "dig": _dig, "host": _host, "nmap": _nmap, "masscan": _masscan,
     "nc": _nc, "netcat": _nc, "ncat": _ncat,
     "curl": _curl, "wget": _wget, "whatweb": _whatweb, "nikto": _nikto, "nikto.pl": _nikto,
     "gobuster": _gobuster, "ffuf": _ffuf, "feroxbuster": _feroxbuster,
-    "sslscan": _sslscan, "testssl.sh": _testssl, "testssl": _testssl,
+    "sslscan": _sslscan, "testssl.sh": _testssl, "testssl": _testssl, "whois": _whois,
 }  # fmt: skip
 
 

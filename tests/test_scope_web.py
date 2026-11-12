@@ -63,7 +63,7 @@ NO_REDIRECTS = "--max-redirect=0"
     [
         ("curl -sS https://app.example.com/login", ["app.example.com"]),
         ("curl -sSo page.html http://10.0.0.5:8080/", ["10.0.0.5"]),
-        ("curl -XPOST -d @body.json https://user:pw@app.example.com/api", ["app.example.com"]),
+        ("curl -XPOST -d '{\"a\": 1}' https://user:pw@app.example.com/api", ["app.example.com"]),
         ("curl -g 'http://[2001:db8::5]:80/'", ["2001:db8::5"]),
         ("curl app.example.com", ["app.example.com"]),
         (
@@ -368,3 +368,42 @@ def test_feroxbuster_wordlist_is_judged_after_the_url_cleanup(project, line):
 def test_feroxbuster_wordlist_words_that_reach_no_host_are_fine(project):
     (project / "ok.txt").write_text("javascript:void(0)\nmailto:x\n/admin\nadmin\n")
     assert _hosts("feroxbuster -u https://app.example.com -w ok.txt") == ["app.example.com"]
+
+
+# --- nothing of the project leaves for a target (PR 5) -------------------------------
+
+
+@pytest.mark.parametrize(
+    "cmd",
+    [
+        "curl -T evidence.tar https://app.example.com/upload",
+        "curl --upload-file x https://app.example.com/",
+        "curl -d @secrets.txt https://app.example.com/",
+        "curl --data-binary @x https://app.example.com/",
+        "curl --json @x https://app.example.com/",
+        "curl --data-urlencode @x https://app.example.com/",
+        "curl --data-urlencode name@x https://app.example.com/",
+        "curl -F file=@x https://app.example.com/",
+        "curl -F 'notes=<x' https://app.example.com/",
+        "curl -H @headers.txt https://app.example.com/",
+        f"wget {NO_REDIRECTS} --post-file=x https://app.example.com/",
+        f"wget {NO_REDIRECTS} --body-file=x --method=PUT https://app.example.com/",
+    ],
+)
+def test_sending_a_file_to_a_target_is_refused(project, cmd):
+    with pytest.raises(TargetError, match="sends a file"):
+        targets_of(shlex.split(cmd))
+
+
+@pytest.mark.parametrize(
+    "cmd",
+    [
+        "curl -d 'user=admin&pw=x' https://app.example.com/login",
+        "curl --data-raw @literal https://app.example.com/",
+        "curl --data-urlencode 'q=a@b' https://app.example.com/",
+        "curl -F 'email=a@b.example' https://app.example.com/",
+        "curl -H 'X-Test: a@b' https://app.example.com/",
+    ],
+)
+def test_data_written_in_the_step_is_fine(project, cmd):
+    assert _hosts(cmd) == ["app.example.com"]

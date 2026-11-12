@@ -390,3 +390,44 @@ def test_without_nmaps_script_database_no_script_is_judged(guard, monkeypatch):
         reason = _engine().refusal_reason(_step(cmd))
         assert reason is not None and "script.db" in reason, cmd
     assert _engine().refusal_reason(_step("nmap -sV 10.0.0.5")) is None
+
+
+# --- whois and masscan's rate (PR 5) ------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    ("cmd", "hosts"),
+    [
+        ("whois app.example.com", ["app.example.com"]),
+        ("whois -h whois.example.net 10.0.0.5", ["10.0.0.5", "whois.example.net"]),
+        ("whois AS64500", []),
+    ],
+)
+def test_whois_targets(cmd, hosts):
+    assert _hosts(cmd) == sorted(hosts)
+    assert _targets(cmd).tier == PASSIVE
+
+
+def test_whois_out_of_scope_asks(guard):
+    engine = _engine()
+    engine.harmless_commands.append("whois")
+    step = _step("whois evil.example.org")
+    assert engine.refusal_reason(step) is None
+    assert "evil.example.org" in engine.confirmation_reason(step)
+
+
+@pytest.mark.parametrize("cmd", ["whois", "whois a.example b.example", "whois -Z x.example"])
+def test_whois_that_cannot_be_read(cmd):
+    with pytest.raises(TargetError):
+        targets_of(shlex.split(cmd))
+
+
+@pytest.mark.parametrize("rate", ["1000", "100", "0.5"])
+def test_masscan_within_the_rate_cap(rate):
+    assert _nets(f"masscan -p80 --rate {rate} 10.0.2.0/24") == ["10.0.2.0/24"]
+
+
+@pytest.mark.parametrize("rate", ["1001", "100000", "0", "-1", "fast", "inf", "nan"])
+def test_masscan_over_the_rate_cap_is_refused(rate):
+    with pytest.raises(TargetError, match="rate"):
+        targets_of(shlex.split(f"masscan -p80 --rate {rate} 10.0.2.0/24"))
