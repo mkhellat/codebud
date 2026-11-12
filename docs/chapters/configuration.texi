@@ -508,7 +508,10 @@ isolation needs bubblewrap: without it --- only @command{unshare}, or no
 isolation tool at all --- a step would share the host's process
 namespace and could signal its processes, so it is refused, at every
 privacy level but @code{trusted} (which means no isolation, by your
-choice).
+choice).  Observer isolation changes what a step can see, not the network
+rules: at @code{private} a step that declares the network still gets
+it, so profiles for live triage should also set
+@code{privacy = "locked"}.
 
 @cindex environment of command steps
 @cindex step_env
