@@ -279,3 +279,10 @@ def test_arguments_codebud_cannot_see_are_refused(monkeypatch, cmd):
 def test_xargs_with_a_program_without_rules_is_fine(monkeypatch):
     engine = _engine(monkeypatch, ["xargs"])
     assert _refusal(engine, "xargs -a files.txt wc -l") is None
+
+
+@pytest.mark.parametrize("cmd", ["tar -czf a.tgz --remove-files src", "tar --remove-f -cf a.tar x"])
+def test_tar_remove_files_is_in_the_floor(monkeypatch, cmd):
+    """tar --remove-files deletes what it archives (review of #16)."""
+    engine = _engine(monkeypatch, ["tar"])
+    assert _refusal(engine, cmd) is not None, cmd

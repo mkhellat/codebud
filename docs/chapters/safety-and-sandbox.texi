@@ -105,7 +105,8 @@ substitution is not refused
 @item @command{tar} @tab @option{--to-command}, @option{-I},
 @option{--use-compress-program}, @option{--checkpoint-action},
 @option{-F}, @option{--info-script}, @option{--new-volume-script},
-@option{--rmt-command}, @option{--rsh-command} (run programs)
+@option{--rmt-command}, @option{--rsh-command} (run programs),
+@option{--remove-files} (deletes what it archives)
 @item @command{rsync} @tab @option{-e}, @option{--rsh} (run a program)
 @item @command{sort} @tab @option{--compress-program} (runs a program)
 @item @command{journalctl} @tab @option{--rotate}, @option{--vacuum-*},
