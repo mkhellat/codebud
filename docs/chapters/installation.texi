@@ -378,9 +378,10 @@ sha256sum -c codebud-0.1.0.tar.gz.sha256
 @end example
 
 @noindent
-The fingerprint that @command{gpg --fingerprint} prints must match the
-one in the command, @code{EDF5FECE5EDCA5C19A9F09F63A57BF9087907F86},
-which is also given in the development chapter and the @file{README.md}.
+The fingerprint that @command{gpg --fingerprint} prints, in groups of
+four, must be @code{EDF5 FECE 5EDC A5C1 9A9F  09F6 3A57 BF90 8790 7F86}
+(the same as @code{EDF5FECE5EDCA5C19A9F09F63A57BF9087907F86}, given
+also in the development chapter and the @file{README.md}).
 @command{gpg --verify} must report a
 good signature made by that fingerprint.  Its warning that the key is not
 certified with a trusted signature is expected, unless you have certified
