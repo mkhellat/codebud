@@ -103,6 +103,14 @@ _RULES: list[tuple[str, str, str]] = [
         "The active agent mode does not allow this tool.",
         "Switch the mode: /mode ask in chat, or --mode ask.",
     ),
+    # Scope before policy: an engagement's refusal is reported as the policy's.
+    (
+        "engagement scope",
+        "A plan step reaches outside the open engagement, or its targets cannot be "
+        "read; the reason says which.",
+        "Rephrase the request so each step names only in-scope targets and meets the "
+        "reason given. The scope is the engagement file's: no allow-list can widen it.",
+    ),
     (
         "safety policy",
         "A plan step uses a command or argument the safety policy does not allow.",

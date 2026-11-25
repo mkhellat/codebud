@@ -230,7 +230,11 @@ is registered this way, so the core never imports that layer.  A check
 can say what it @emph{provides} (@code{add_step_check(check,
 provides="engagement")}), and a profile with @code{engagement = true}
 refuses command and web search steps while no registered check provides
-an engagement (@pxref{Profiles}).
+an engagement (@pxref{Profiles}).  A layer can also register a step
+@emph{recorder} (@code{add_step_recorder()}): the executor tells it about
+every step before it runs, after it ends and when it is refused, and a
+step whose start cannot be recorded does not run --- the security
+layer's evidence log is kept this way.
 
 @code{describe_rules()} returns a compact summary of the three policy
 lists, which is embedded in the planner prompt so the model can avoid

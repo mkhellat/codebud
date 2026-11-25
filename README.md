@@ -85,6 +85,24 @@ codebud integrity pin                               # record what is installed n
 codebud integrity verify                            # what changed since (exit 1 if anything)
 ```
 
+## Security work
+
+For authorized security work only -- incident response on hosts you own,
+penetration tests you are contracted to run -- `codebud-sec` runs codebud
+inside an engagement: a TOML file with the client, the in-scope and
+excluded targets and the time window. Every network target a step names is
+checked against it (out of scope is refused), scanning steps run where the
+network itself lets through only their targets, and every step goes into
+an encrypted, hash-chained evidence log.
+
+```bash
+codebud-sec chat --engagement acme.toml             # security-pentest profile
+codebud-sec evidence add disk.E01 --engagement acme.toml
+codebud-sec evidence verify --engagement acme.toml  # record the head hash elsewhere
+```
+
+See "Security Work" in the manual.
+
 ## Project search
 
 Index a project once and every request gets its most relevant code as
@@ -151,14 +169,15 @@ make pdf     # → docs/codebud.pdf
 
 Topics covered: Introduction · Installation · Model Management ·
 LLM Execution · Performance Benchmarking · Usage · Configuration ·
-Architecture · Tools Reference · Safety & Sandbox · Development ·
+Architecture · Tools Reference · Safety & Sandbox · Privacy · Security Work ·
+Development ·
 Troubleshooting · Glossary.
 
 ## Project layout
 
 ```
 src/codebud/    The package: agent, CLI (cli/), tools, default policy
-src/codebud_sec/ Security layer (engagement file, evidence log); not used yet
+src/codebud_sec/ Security layer: codebud-sec, engagements, scope, evidence log
 docs/           GNU Texinfo manual
 scripts/        Developer scripts (benchmark, search and plan evals)
 tests/          Test suite (pytest)

@@ -1,10 +1,10 @@
 #!/bin/sh
-# codebud — command installed by `make install` (GNU Autotools build).
+# @COMMAND@ — command installed by `make install` (GNU Autotools build).
 #
-# Runs the codebud package with the Python it was configured for. The
+# Runs the @MODULE@ package with the Python it was configured for. The
 # package directory is put on PYTHONPATH because a --prefix install (e.g.
 # /usr/local) is not on every system Python's default module path.
 
 PYTHONPATH="@pythondir@${PYTHONPATH:+:$PYTHONPATH}"
 export PYTHONPATH
-exec "@PYTHON@" -m codebud "$@"
+exec "@PYTHON@" -m @MODULE@ "$@"

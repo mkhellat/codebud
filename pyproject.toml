@@ -61,6 +61,7 @@ dev = [
 
 [project.scripts]
 codebud = "codebud.cli.main:main"
+codebud-sec = "codebud_sec.cli:main"
 
 [project.urls]
 Homepage     = "https://github.com/mkhellat/codebud"

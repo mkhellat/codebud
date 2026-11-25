@@ -121,3 +121,80 @@ def test_the_profile_key_is_read(tmp_path):
     (tmp_path / "q.toml").write_text('engagement = "yes"\n')
     with pytest.raises(profiles.ProfileError):
         profiles._load_file("q", tmp_path / "q.toml")
+
+
+# --- step recorders (step 5 plan, PR 7: the evidence log) -----------------------------
+
+
+def _executor(tool=None):
+    from codebud.executor import Executor
+
+    class Registry:
+        def get(self, name):
+            return tool
+
+    class Memory:
+        def add_snapshot(self, step, result):
+            pass
+
+    return Executor(Registry(), None, Memory(), safety=_engine())
+
+
+class _Tool:
+    def __init__(self, returncode=0):
+        self.ran = 0
+        self.returncode = returncode
+
+    def run(self, args):
+        self.ran += 1
+        return {"stdout": "out", "stderr": "", "returncode": self.returncode}
+
+
+def _plan(cmd):
+    return {"plan": [{"id": "step_0", "tool": "command", "description": "d", "args": {"cmd": cmd}}]}
+
+
+@pytest.fixture
+def recorded(monkeypatch):
+    events = []
+    monkeypatch.setattr(safety, "_STEP_RECORDERS", [])
+    safety.add_step_recorder(
+        lambda event, step, result: events.append((event, step["args"]["cmd"], result))
+    )
+    return events
+
+
+@pytest.mark.parametrize("returncode", [0, 1])
+def test_a_step_is_recorded_before_and_after_it_runs(recorded, returncode):
+    tool = _Tool(returncode)
+    _executor(tool).execute_plan(_plan("ls"))
+    assert [e[0] for e in recorded] == ["start", "done"]
+    assert recorded[1][2]["returncode"] == returncode and recorded[1][2]["stdout"] == "out"
+
+
+def test_a_refused_step_is_recorded(recorded):
+    _executor(_Tool()).execute_plan(_plan("rm -rf /"))
+    assert [e[0] for e in recorded] == ["refused"]
+    assert recorded[0][2]["error"]
+
+
+def test_a_step_that_cannot_be_recorded_does_not_run(monkeypatch):
+    monkeypatch.setattr(safety, "_STEP_RECORDERS", [])
+
+    def broken(event, step, result):
+        raise OSError("disk full")
+
+    safety.add_step_recorder(broken)
+    tool = _Tool()
+    result = _executor(tool).execute_plan(_plan("ls"))
+    assert tool.ran == 0
+    assert result["status"] == "step_refused" and "disk full" in result["error"]
+
+
+def test_a_crashing_tool_is_recorded(recorded):
+    class Crash:
+        def run(self, args):
+            raise RuntimeError("boom")
+
+    _executor(Crash()).execute_plan(_plan("ls"))
+    assert [e[0] for e in recorded] == ["start", "done"] and "boom" in recorded[1][2]["error"]

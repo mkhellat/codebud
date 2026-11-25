@@ -11,13 +11,17 @@ SUBDIRS = src docs
 # ─── The codebud command ─────────────────────────────────────────────────────
 # A small POSIX sh launcher for the configured Python and package directory.
 
-bin_SCRIPTS = codebud
-CLEANFILES = codebud
+bin_SCRIPTS = codebud codebud-sec
+CLEANFILES = codebud codebud-sec
 
-codebud: $(srcdir)/src/launcher.in Makefile
+# codebud runs the codebud package, codebud-sec the security layer.
+codebud codebud-sec: $(srcdir)/src/launcher.in Makefile
 	$(AM_V_GEN)rm -f $@ $@.tmp && \
+	module=`echo $@ | sed 's/-/_/'` && \
 	$(SED) -e 's|@PYTHON[@]|$(PYTHON)|g' \
 	       -e 's|@pythondir[@]|$(pythondir)|g' \
+	       -e "s|@MODULE[@]|$$module|g" \
+	       -e 's|@COMMAND[@]|$@|g' \
 	       $(srcdir)/src/launcher.in > $@.tmp && \
 	chmod +x $@.tmp && mv $@.tmp $@
 
