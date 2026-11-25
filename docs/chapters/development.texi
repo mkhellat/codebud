@@ -108,6 +108,7 @@ tests/
 ├── test_memory.py               MemoryStore JSON Lines, crash safety,
 │                                concurrent writers, legacy migration
 ├── test_modes.py                mode enforcement (SafetyEngine, Executor)
+├── test_no_shell.py             steps run without a shell: operators refused
 ├── test_num_ctx.py              explicit, constant num_ctx on every request
 ├── test_ollama_proxy.py         local Ollama reachable despite HTTP_PROXY
 ├── test_patcher.py             strict unified diffs: context located,

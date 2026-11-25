@@ -56,6 +56,10 @@ a safety policy you can read and change.
   network unless declared, project-only writes, secrets and codebud's own
   files hidden, an allow-listed environment.
 
+  Steps run without a shell.  A plan that uses a pipe, redirection,
+  && or ; is refused with that reason, instead of the operator being
+  passed to the program as text.
+
   File steps write only inside the project, never into .git/ or
   .codebud/, and never read your secret files; every plan shows the real
   path, command or query of each step before it runs.
