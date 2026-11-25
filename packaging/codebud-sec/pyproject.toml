@@ -1,0 +1,56 @@
+# The codebud-sec distribution. scripts/stage-codebud-sec copies this file,
+# with the version placeholder below replaced by the version in the top-level pyproject.toml,
+# next to a copy of src/codebud_sec/, README.md and COPYING, and builds there.
+[project]
+name = "codebud-sec"
+version = "@VERSION@"
+description = "Codebud's security layer: engagements, scope guard, network fence and evidence log for authorized security work"
+readme = "README.md"
+license = "GPL-3.0-or-later"
+license-files = ["COPYING"]
+authors = [
+    { name = "Mohammadreza Khellat", email = "mkhellat@beavernets.com" },
+]
+keywords = ["llm", "coding-agent", "ollama", "security", "incident-response", "pentest"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Environment :: Console",
+    "Intended Audience :: Developers",
+    "Operating System :: POSIX :: Linux",
+    "Operating System :: MacOS",
+    "Operating System :: POSIX :: BSD :: FreeBSD",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
+    "Topic :: Security",
+    "Topic :: Software Development :: Code Generators",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+]
+requires-python = ">=3.10"
+# Exactly the same codebud: the two are released together.
+dependencies = ["codebud[crypto]==@VERSION@"]
+
+[project.scripts]
+codebud-sec = "codebud_sec.cli:main"
+
+[project.urls]
+Homepage     = "https://github.com/mkhellat/codebud"
+Repository   = "https://github.com/mkhellat/codebud"
+Codeberg     = "https://codeberg.org/mkhellat/codebud"
+Documentation = "https://github.com/mkhellat/codebud/tree/main/docs"
+"Bug Tracker" = "https://github.com/mkhellat/codebud/issues"
+Changelog    = "https://github.com/mkhellat/codebud/blob/main/NEWS"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["codebud_sec", "codebud_sec.*"]
+
+[tool.setuptools.package-data]
+codebud_sec = ["data/profiles/*.toml", "data/profiles/*/*.json"]
+
+[build-system]
+requires = ["setuptools>=77"]  # 77: PEP 639 license expressions
+build-backend = "setuptools.build_meta"

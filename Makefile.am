@@ -45,7 +45,8 @@ installcheck-local:
 
 # ─── Release tarball ─────────────────────────────────────────────────────────
 
-EXTRA_DIST = bootstrap pyproject.toml README.md NEWS llms.txt src/launcher.in tests scripts
+EXTRA_DIST = bootstrap pyproject.toml README.md NEWS llms.txt src/launcher.in tests scripts \
+             MANIFEST.in packaging/codebud-sec/pyproject.toml packaging/codebud-sec/README.md
 
 # distcheck reconfigures from scratch; keep the Python it was run with.
 AM_DISTCHECK_CONFIGURE_FLAGS = PYTHON="$(PYTHON)"
@@ -75,7 +76,7 @@ help:
 	  '  make lint             ruff check' \
 	  '  make format           ruff format + ruff check --fix' \
 	  '  make coverage         tests with branch coverage -> htmlcov/' \
-	  '  make dist-python      Python sdist and wheel -> dist/' \
+	  '  make dist-python      Python sdists and wheels (codebud, codebud-sec) -> dist/' \
 	  '  make release-check    is this checkout ready to release? (read-only)' \
 	  '  make release-sign     sign the distcheck tarball (.sig, .sha256)' \
 	  '  make install-link     link .venv/bin/codebud into LINKDIR ($(LINKDIR))' \
@@ -103,8 +104,13 @@ coverage:
 	  --cov-report=html:htmlcov tests
 	@echo "Coverage report written to htmlcov/index.html"
 
+# Two distributions from one source tree, one version: the core, then the
+# security layer staged into build-codebud-sec/ (scripts/stage-codebud-sec).
 dist-python:
 	"$(VENVPY)" -m build --outdir dist "$(srcdir)"
+	rm -rf build-codebud-sec
+	$(SHELL) "$(srcdir)/scripts/stage-codebud-sec" "$(abs_srcdir)" build-codebud-sec
+	"$(VENVPY)" -m build --outdir dist build-codebud-sec
 
 # Read-only: never tags or uploads. Needs the dev tools (ruff, build,
 # twine) in $(PYTHON); see scripts/release-check.
@@ -124,7 +130,7 @@ uninstall-link:
 	rm -f "$(LINKDIR)/codebud"
 
 clean-local:
-	rm -rf htmlcov .coverage build dist
+	rm -rf htmlcov .coverage build dist build-codebud-sec
 
 # ─── Back to a fresh checkout ───────────────────────────────────────────────
 # `make maintainer-clean` (GNU standard: remove everything that can be

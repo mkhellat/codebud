@@ -112,6 +112,8 @@ tests/
 │                                mismatch fails unchanged, insertions
 ├── test_own_code_warning.py    startup warning when codebud's own code is
 │                                inside the project it works on
+├── test_packaging.py            the two distributions: core vs codebud-sec
+│                                contents, staging, MANIFEST.in prune
 ├── test_paths.py                XDG/.codebud lookup, migration, version,
 │                                python -m codebud
 ├── test_plan_args.py            required tool arguments, retry with
@@ -635,22 +637,32 @@ the fast checks (everything before @command{make distcheck}).
 Releases reach PyPI through @dfn{trusted publishing}: the GitHub Actions
 workflow @file{.github/workflows/release.yml} proves to PyPI who it is
 with a short-lived OpenID Connect token, so no API token is stored
-anywhere, and PyPI attaches signed attestations to every file.  Pushing
-a tag @samp{v@var{version}} builds the sdist and wheel once, publishes
-them to TestPyPI and, only if that succeeded, to PyPI.  The workflow
+anywhere, and PyPI attaches signed attestations to every file.  Codebud is
+released as two distributions from this repository, always at the same
+version: @code{codebud} (the core) and @code{codebud-sec} (the security
+layer, whose source stays in @file{src/codebud_sec}).
+@file{packaging/codebud-sec/} holds the template of its
+@file{pyproject.toml} and its PyPI README, and
+@samp{scripts/stage-codebud-sec @var{srcdir} @var{outdir}} copies the
+package, README and @file{COPYING} into @var{outdir} and fills in the
+version.  @command{make dist-python} builds both into @file{dist/}, and
+the workflow does the same.  Pushing
+a tag @samp{v@var{version}} builds the sdists and wheels of both once,
+publishes them to TestPyPI and, only if that succeeded, to PyPI.  The workflow
 stops when the tag does not match @code{version} in
 @file{pyproject.toml}.  Starting the workflow by hand (@samp{Run
 workflow} on its Actions page, or @samp{gh workflow run release.yml})
 publishes to TestPyPI only: a rehearsal.
 
 Once, before the first release, the maintainer registers the workflow
-on both sites (@samp{Publishing} @result{} @samp{Add a new pending
+on both sites, one pending publisher for each of the two projects on each
+index, four in all (@samp{Publishing} @result{} @samp{Add a new pending
 publisher} on @uref{https://pypi.org} and @uref{https://test.pypi.org},
 each account with two-factor authentication):
 
 @multitable @columnfractions .35 .65
 @headitem Field @tab Value
-@item PyPI project name @tab @code{codebud}
+@item PyPI project name @tab @code{codebud}, then @code{codebud-sec}
 @item Owner @tab @code{mkhellat}
 @item Repository name @tab @code{codebud}
 @item Workflow name @tab @code{release.yml}
@@ -658,7 +670,8 @@ each account with two-factor authentication):
 @end multitable
 
 @noindent
-The project name is claimed by its first upload.
+The values are the same for both projects except the project name.  Each
+project name is claimed by its first upload.
 
 Release tags and the GNU tarball are signed with an OpenPGP key kept for
 Codebud alone.  Once, the maintainer creates it and tells Git to use it:
@@ -700,7 +713,7 @@ commit and push.
 install from there into a fresh virtual environment:
 @example
 pip install --index-url https://test.pypi.org/simple/ \
-    --extra-index-url https://pypi.org/simple/ codebud
+    --extra-index-url https://pypi.org/simple/ codebud codebud-sec
 @end example
 @item Sign the release tarball that @command{make release-check} built
 (it ran @command{make distcheck}):

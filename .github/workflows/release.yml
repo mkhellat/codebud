@@ -4,8 +4,10 @@
 #   push a tag vX.Y.Z  → build → TestPyPI → PyPI
 #   run it by hand     → build → TestPyPI only (a rehearsal)
 #
-# PyPI and TestPyPI each need a "pending publisher" for this repository,
-# workflow file release.yml and environment pypi / testpypi; see
+# Two projects are published from this repository at one version: codebud
+# and codebud-sec (the security layer). PyPI and TestPyPI each need a
+# "pending publisher" for EACH project: this repository, workflow file
+# release.yml and environment pypi / testpypi (the same for both); see
 # "Publishing a release" in the manual's Development chapter.
 name: Release
 
@@ -19,7 +21,7 @@ permissions:
 
 jobs:
   build:
-    name: Build sdist and wheel
+    name: Build sdists and wheels
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -45,6 +47,8 @@ jobs:
           python -m pip install --upgrade pip
           python -m pip install "build>=1.0" "twine>=5.0"
           python -m build
+          sh scripts/stage-codebud-sec . build-codebud-sec
+          python -m build --outdir dist build-codebud-sec
           python -m twine check --strict dist/*
 
       - name: Keep the files for the publish jobs
@@ -69,6 +73,7 @@ jobs:
         with:
           name: dist
           path: dist/
+      # Uploads everything in dist/: both projects.
       - uses: pypa/gh-action-pypi-publish@release/v1
         with:
           repository-url: https://test.pypi.org/legacy/

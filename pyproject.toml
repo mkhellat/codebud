@@ -36,6 +36,9 @@ dependencies = [
     "tomli>=1.1; python_version < '3.11'",
 ]
 
+# codebud-sec, the security layer, is a separate distribution built from
+# packaging/codebud-sec/ (see scripts/stage-codebud-sec); its version is this one.
+
 # Optional features users can install: pip install 'codebud[openai]'
 [project.optional-dependencies]
 openai = ["openai>=1.0"]
@@ -61,7 +64,6 @@ dev = [
 
 [project.scripts]
 codebud = "codebud.cli.main:main"
-codebud-sec = "codebud_sec.cli:main"
 
 [project.urls]
 Homepage     = "https://github.com/mkhellat/codebud"
@@ -73,10 +75,10 @@ Changelog    = "https://github.com/mkhellat/codebud/blob/main/NEWS"
 
 [tool.setuptools.packages.find]
 where = ["src"]
+include = ["codebud", "codebud.*"]
 
 [tool.setuptools.package-data]
 codebud = ["data/policy/*.json", "data/skill/SKILL.md", "data/skill/agensi/SKILL.md"]
-codebud_sec = ["data/profiles/*.toml", "data/profiles/*/*.json"]
 
 [build-system]
 requires = ["setuptools>=77"]  # 77: PEP 639 license expressions

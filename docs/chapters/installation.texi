@@ -151,6 +151,7 @@ The repository layout:
 @example
 src/codebud/    The package (agent, CLI, tools, default policy)
 docs/           This manual (GNU Texinfo)
+packaging/codebud-sec/  The codebud-sec distribution (pyproject template, PyPI README)
 scripts/        Developer scripts (benchmark, search and plan evals)
 tests/          Pytest test suite
 bootstrap       Generates ./configure (GNU Autotools)
@@ -166,8 +167,11 @@ pyproject.toml  Package metadata (PEP 621)
 @cindex pip install
 
 Instead of @command{make install} (@pxref{Build System}), Codebud can be
-installed with @command{pip} like any Python package.  For development,
-create and activate a virtual environment:
+installed with @command{pip} like any Python package.  The security
+layer (@pxref{Security Work}) is a separate distribution,
+@samp{pip install codebud-sec}; it pulls in the same version of Codebud
+with encryption support.  The Autotools build installs both.  For
+development, create and activate a virtual environment:
 
 @example
 python -m venv .venv

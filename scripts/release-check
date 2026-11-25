@@ -6,8 +6,9 @@
 # Runs every check and lists all failures at the end.  Read-only: it never
 # tags, uploads or fetches.  --quick stops after the fast checks (git
 # state, tag, NEWS, lint); the full run adds `make distcheck`, builds the
-# sdist and wheel, runs `twine check` and installs the wheel into a
-# throwaway venv (this step downloads the runtime dependencies).
+# sdists and wheels of codebud and codebud-sec, runs `twine check` and
+# installs both wheels into a throwaway venv (this step downloads the
+# runtime dependencies).
 #
 # `make release-check` runs it with the configured Python.
 
@@ -101,29 +102,59 @@ if [ "$quick" = no ]; then
     fi
 
     if "$python" -m build --outdir "$tmp/dist" . >"$tmp/build.log" 2>&1; then
-        pass "sdist and wheel build"
-        if "$python" -m twine check --strict "$tmp"/dist/* >"$tmp/twine.log" 2>&1; then
-            pass "twine check"
+        pass "codebud sdist and wheel build"
+    else
+        fail "codebud sdist and wheel build (last lines below)"
+        tail -n 20 "$tmp/build.log"
+    fi
+
+    # codebud-sec: the second distribution, staged and built the same way.
+    if sh scripts/stage-codebud-sec . "$tmp/codebud-sec" >"$tmp/stage.log" 2>&1 &&
+        "$python" -m build --outdir "$tmp/dist" "$tmp/codebud-sec" >"$tmp/build-sec.log" 2>&1; then
+        pass "codebud-sec sdist and wheel build"
+    else
+        fail "codebud-sec stage and build (last lines below)"
+        tail -n 20 "$tmp/stage.log" "$tmp/build-sec.log" 2>/dev/null
+    fi
+
+    if "$python" -m twine check --strict "$tmp"/dist/* >"$tmp/twine.log" 2>&1; then
+        pass "twine check (codebud, codebud-sec)"
+    else
+        fail "twine check"
+        cat "$tmp/twine.log"
+    fi
+
+    wheels=$(ls "$tmp"/dist/codebud-*.whl "$tmp"/dist/codebud_sec-*.whl 2>/dev/null)
+    if [ "$(echo "$wheels" | wc -l)" -ne 2 ]; then
+        fail "expected two wheels (codebud, codebud_sec) in the build output"
+    elif "$python" -m venv "$tmp/venv" &&
+        "$tmp/venv/bin/python" -m pip install --quiet $wheels >"$tmp/pip.log" 2>&1; then
+        got=$("$tmp/venv/bin/codebud" version 2>&1 | head -n 1)
+        if [ "$got" = "codebud  $version" ]; then
+            pass "installed wheel runs: $got"
         else
-            fail "twine check"
-            cat "$tmp/twine.log"
+            fail "installed wheel says '$got', expected 'codebud  $version'"
         fi
-        wheel=$(ls "$tmp"/dist/*.whl)
-        if "$python" -m venv "$tmp/venv" &&
-            "$tmp/venv/bin/python" -m pip install --quiet "$wheel" >"$tmp/pip.log" 2>&1; then
-            got=$("$tmp/venv/bin/codebud" version 2>&1 | head -n 1)
-            if [ "$got" = "codebud  $version" ]; then
-                pass "installed wheel runs: $got"
-            else
-                fail "installed wheel says '$got', expected 'codebud  $version'"
-            fi
+        if "$tmp/venv/bin/codebud" --help >/dev/null 2>&1; then
+            pass "installed codebud --help runs"
         else
-            fail "wheel does not install into a fresh venv (last lines below)"
-            tail -n 5 "$tmp/pip.log"
+            fail "installed codebud --help fails"
+        fi
+        if "$tmp/venv/bin/codebud-sec" --help >/dev/null 2>&1; then
+            pass "installed codebud-sec --help runs"
+        else
+            fail "installed codebud-sec --help fails"
+        fi
+        # The point of the split: installed beside it, the core finds the
+        # security layer's profiles (profiles.shipped_profile_dir).
+        if "$tmp/venv/bin/codebud" profiles 2>&1 | grep -q security-pentest; then
+            pass "the core finds codebud-sec's profiles"
+        else
+            fail "codebud profiles does not list codebud-sec's profiles"
         fi
     else
-        fail "sdist and wheel build (last lines below)"
-        tail -n 20 "$tmp/build.log"
+        fail "wheels do not install into a fresh venv (last lines below)"
+        tail -n 5 "$tmp/pip.log"
     fi
 fi
 

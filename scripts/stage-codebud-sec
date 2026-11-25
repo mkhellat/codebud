@@ -1,0 +1,51 @@
+#!/bin/sh
+# stage-codebud-sec — lay out the codebud-sec distribution for building.
+#
+#   scripts/stage-codebud-sec SRCDIR OUTDIR
+#
+# codebud and codebud-sec are two PyPI distributions released together from
+# one source tree.  The security layer stays in src/codebud_sec/, beside
+# codebud, so this copies it with its README.md, COPYING and a pyproject.toml
+# (from packaging/codebud-sec/, with @VERSION@ replaced by the version in
+# SRCDIR/pyproject.toml) into OUTDIR, which must not exist or be empty.
+# Then:  python -m build --outdir dist OUTDIR
+#
+# `make dist-python`, release-check and the release workflow run it.
+
+srcdir=${1:?usage: stage-codebud-sec SRCDIR OUTDIR}
+outdir=${2:?usage: stage-codebud-sec SRCDIR OUTDIR}
+
+version=$(sed -n 's/^version = "\([^"]*\)".*/\1/p' "$srcdir/pyproject.toml" 2>/dev/null)
+if [ -z "$version" ]; then
+    echo "stage-codebud-sec: no version in $srcdir/pyproject.toml" >&2
+    exit 1
+fi
+for f in packaging/codebud-sec/pyproject.toml packaging/codebud-sec/README.md COPYING; do
+    if [ ! -f "$srcdir/$f" ]; then
+        echo "stage-codebud-sec: $srcdir/$f not found" >&2
+        exit 1
+    fi
+done
+if [ ! -d "$srcdir/src/codebud_sec" ]; then
+    echo "stage-codebud-sec: $srcdir/src/codebud_sec not found" >&2
+    exit 1
+fi
+if [ -e "$outdir" ] && { [ ! -d "$outdir" ] || [ -n "$(ls -A "$outdir")" ]; }; then
+    echo "stage-codebud-sec: $outdir exists and is not an empty directory" >&2
+    exit 1
+fi
+
+mkdir -p "$outdir/codebud_sec" || exit 1
+outdir=$(cd "$outdir" && pwd) || exit 1  # the copy loop below changes directory
+cp "$srcdir/packaging/codebud-sec/README.md" "$srcdir/COPYING" "$outdir/" || exit 1
+(cd "$srcdir/src/codebud_sec" &&
+    find . \( -name __pycache__ -o -name '*.pyc' \) -prune -o -type f -print |
+    while IFS= read -r f; do
+        mkdir -p "$outdir/codebud_sec/$(dirname "$f")" 2>/dev/null || exit 1
+        cp "$f" "$outdir/codebud_sec/$f" || exit 1
+    done) || exit 1
+sed "s/@VERSION@/$version/g" "$srcdir/packaging/codebud-sec/pyproject.toml" \
+    >"$outdir/pyproject.toml" || exit 1
+
+echo "stage-codebud-sec: codebud-sec $version staged in $outdir"
+echo "  pyproject.toml README.md COPYING codebud_sec/ ($(find "$outdir/codebud_sec" -type f | wc -l | tr -d ' ') files)"
