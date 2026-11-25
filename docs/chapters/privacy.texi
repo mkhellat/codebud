@@ -340,7 +340,10 @@ and text to embed for project search.  By default this is
 machine is announced when a command starts and shown in the chat
 toolbar; over plain @code{http} it is refused unless you allow it, since
 your code would cross the network unencrypted (@pxref{LLM Backend
-Variables}).
+Variables}).  After steps run, what they printed (secrets masked unless
+you turned masking off, at most about nine thousand characters) is sent
+to the model so it can answer your request: with a local server it does
+not leave the machine, with a remote server or OpenAI it does.
 
 @item OpenAI
 Only with @env{CODEBUD_BACKEND=openai}: then prompts go to OpenAI, which

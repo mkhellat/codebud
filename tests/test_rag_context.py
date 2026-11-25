@@ -11,6 +11,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
+from codebud.persona import identity_block
 from codebud.planner import LLMPlanner, estimate_tokens
 from codebud.rag import context
 from codebud.rag.chunker import Chunk
@@ -175,7 +176,7 @@ def _captured_plain_prompt(monkeypatch, **kwargs):
 
 def test_plain_reply_prompt_is_unchanged_without_context(monkeypatch):
     prompt = _captured_plain_prompt(monkeypatch)
-    assert prompt == "You are a helpful coding assistant.\n\nUser: how does alpha work?\nAssistant:"
+    assert prompt == f"{identity_block()}\n\nUser: how does alpha work?\nAssistant:"
 
 
 def test_plain_reply_sees_the_context_and_is_asked_to_cite_it(monkeypatch):

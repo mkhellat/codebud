@@ -39,6 +39,11 @@ class StepsOutcome:
     changed_files: bool = False  # a step could have changed project files
     last_output: dict[str, Any] | None = None
     outputs: list[dict[str, Any]] = field(default_factory=list)
+    # One entry per step of the plan, in order: {"step": the step dict,
+    # "status": ok | failed | skipped | refused | unconfirmed | "not run",
+    # "result": stdout/stderr/returncode when it ran, "error": text when
+    # refused or crashed}. Feeds AgentCore.answer_after_steps.
+    records: list[dict[str, Any]] = field(default_factory=list)
 
 
 def policy_for_mode(mode: str) -> str:
@@ -66,10 +71,12 @@ def run_steps(
     if policy not in POLICIES:
         raise ValueError(f"unknown approval policy: {policy}")
     outcome = StepsOutcome()
+    outcome.records = [{"step": step, "status": "not run"} for step in steps]
     ask_each = policy == "ask"
     all_approved = False  # "a" in ask mode: the rest run without asking...
     for number, step in enumerate(steps, 1):
         print_step_header(number, step)
+        record = outcome.records[number - 1]
 
         # ...except a step that sends data off the machine, which is still
         # confirmed (unless privacy is trusted), as the docs promise.
@@ -79,6 +86,7 @@ def run_steps(
             answer = _ask("  Send it? [y/N] ")
             if answer is None or not answer.startswith("y"):
                 outcome.unconfirmed += answer is None
+                record["status"] = "unconfirmed" if answer is None else "skipped"
                 print_status("-- skipped")
                 continue
 
@@ -91,6 +99,7 @@ def run_steps(
                 ask_each = False  # this step and the rest run without asking
                 all_approved = True
             elif not answer.startswith("y"):
+                record["status"] = "skipped"
                 print_status("-- skipped")
                 continue
         elif policy == "auto":
@@ -100,9 +109,11 @@ def run_steps(
                 answer = _ask("  Run it? [y/N] ")
                 if answer is None:
                     outcome.unconfirmed += 1
+                    record["status"] = "unconfirmed"
                     print_status("-- not run: no one to confirm")
                     continue
                 if not answer.startswith("y"):
+                    record["status"] = "skipped"
                     print_status("-- skipped")
                     continue
 
@@ -114,15 +125,20 @@ def run_steps(
                 print_step_result(failed, verbose=verbose, full=full_output)
                 outcome.last_output = failed
                 outcome.outputs.append(failed)
+                record.update(status="failed", result=failed)
                 print_status(f"-- stopped: step {number} failed; the steps after it did not run")
             else:  # refused or crashed before producing output
                 label = "Refused" if result.get("status") == "step_refused" else "Step error"
-                print_error(str(result.get("error") or result), label=label)
+                error = str(result.get("error") or result)
+                print_error(error, label=label)
+                refused = result.get("status") == "step_refused"
+                record.update(status="refused" if refused else "failed", error=error)
             outcome.failed = True
             break
         out = result["results"].get(step["id"], {})
         print_step_result(out, verbose=verbose, full=full_output)
         outcome.ran += 1
+        record.update(status="ok", result=out)
         outcome.last_output = out
         outcome.outputs.append(out)
     return outcome

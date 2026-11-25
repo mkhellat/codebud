@@ -52,6 +52,7 @@ def cmd_run(args):
         outcome = run_steps(
             agent, plan.get("plan", []), policy, verbose=args.verbose, full_output=True
         )
+        _print_answer(agent, args, outcome)
         _exit_on_failure(outcome)
     finally:
         agent.close()
@@ -104,9 +105,30 @@ def cmd_plan(args):
         outcome = run_steps(
             agent, plan.get("plan", []), policy, verbose=args.verbose, full_output=True
         )
+        _print_answer(agent, args, outcome)
         _exit_on_failure(outcome)
     finally:
         agent.close()
+
+
+def _print_answer(agent, args, outcome) -> None:
+    """After the steps, read their results and answer the request (stdout).
+
+    The step output was shown as it ran; this is the model's answer from it,
+    nothing when no step ran or the model is unavailable.
+    """
+    from codebud.cli.display import ProgressIndicator
+
+    if not (outcome.ran or outcome.failed):
+        return
+    prog = ProgressIndicator(no_progress=common.no_progress(args))
+    prog.start()
+    try:
+        reply = agent.answer_after_steps(args.message, outcome.records, on_chunk=prog.on_chunk)
+    finally:
+        prog.stop()
+    if reply:
+        print(common.reply_text(reply), flush=True)
 
 
 def _exit_on_failure(outcome) -> None:

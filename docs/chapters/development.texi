@@ -46,6 +46,8 @@ network access use @code{unittest.mock.patch} to replace @code{call_llm}.
 tests/
 ├── conftest.py                  isolates XDG and legacy data dirs per test;
 │                                embeddings use the offline stub
+├── test_answer_after_steps.py   answer from step results: identity, bounds,
+│                                masking, history outcome, run and chat
 ├── test_backend.py              explicit backend, no OpenAI fallback,
 │                                llm_unavailable, doctor
 ├── test_build.py                Makefile.am lists every module, data file

@@ -490,6 +490,12 @@ def _handle_request(state: ChatState, message: str) -> None:
     )
     if outcome.last_output is not None:
         state.last_step_output = outcome.last_output
+    if outcome.ran or outcome.failed:
+        reply = _with_progress(
+            state, lambda on_chunk: agent.answer_after_steps(message, outcome.records, on_chunk)
+        )
+        if reply:
+            print_assistant_reply(reply)
     if outcome.changed_files:
         hint = state.hints.after_changes()
         if hint:
