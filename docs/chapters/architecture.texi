@@ -649,6 +649,9 @@ src/codebud_sec/               the security layer (authorized security work)
 └── evidence.py        hash-chained, append-only evidence log,
                        encrypted at rest (appends need no passphrase)
 
+packaging/codebud-sec/         the codebud-sec distribution: pyproject.toml
+                               template and PyPI README
+
 ~/.local/share/codebud/       runtime data ($XDG_DATA_HOME/codebud)
 ├── memory/entries.jsonl       execution timeline (auto-created)
 ├── sessions/<id>.json         chat session checkpoints (auto-created)

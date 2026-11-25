@@ -56,7 +56,9 @@ codebud skill install --for claude    # or: --for openclaw
 
 Alternatively, install it with pip like any Python package:
 `pip install .` (add `"[rag]"` for project search, `"[openai]"` for the
-optional OpenAI backend).
+optional OpenAI backend). The security layer is a separate distribution:
+`pip install codebud-sec` (it installs the same version of codebud with
+encryption support); `pip install codebud` alone has no security profiles.
 
 ## Encryption at rest
 
@@ -101,7 +103,9 @@ codebud-sec evidence add disk.E01 --engagement acme.toml
 codebud-sec evidence verify --engagement acme.toml  # record the head hash elsewhere
 ```
 
-See "Security Work" in the manual.
+Install it separately: `pip install codebud-sec` (this also installs
+codebud). With `pip install codebud` alone there are no security profiles
+and no `codebud-sec` command. See "Security Work" in the manual.
 
 ## Project search
 

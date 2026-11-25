@@ -3,15 +3,20 @@
 @cindex security work
 @cindex codebud-sec
 
-Codebud's security layer (@file{codebud_sec}, part of the Codebud
-distribution) is for @emph{authorized} security work: incident response
-on hosts you own or are authorized to examine, and penetration tests you
+Codebud's security layer (@file{codebud_sec}, a separate distribution
+released with Codebud) is for @emph{authorized} security work: incident
+response on hosts you own or are authorized to examine, and penetration tests you
 are contracted to run.  It adds an engagement file that states what was
 authorized, a command, @command{codebud-sec}, that keeps every step to
 it, and an evidence log that records every step.  Nothing here grants
 access to anything; it only states, and helps keep to, what was already
 authorized.  Use it only within a written authorization (rules of
 engagement, a signed scope, an incident ticket).
+
+Install it with @samp{pip install codebud-sec}, which also installs the
+same version of Codebud with encryption support, or with the Autotools
+build (@pxref{Build System}), which installs everything.  Without it,
+Codebud has no security profiles and no @command{codebud-sec} command.
 
 @menu
 * Security Work at a Glance::   What codebud-sec adds to codebud.

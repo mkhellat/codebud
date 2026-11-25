@@ -1,0 +1,5 @@
+# The codebud sdist: the core only. The security layer in src/codebud_sec is
+# its own distribution, codebud-sec (packaging/codebud-sec, staged by
+# scripts/stage-codebud-sec), so it is pruned here whatever a stale
+# *.egg-info or a file-finder plugin would add.
+prune src/codebud_sec
