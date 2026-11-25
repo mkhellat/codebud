@@ -1,0 +1,60 @@
+{
+  "fixture": {
+    "abdul/notes.txt": "Budget meeting on Monday; approve the GPU purchase.\n",
+    "prof/syllabus.md": "# Quantum mechanics 101\n\nWeek 1: spin\nWeek 2: the hydrogen atom\n",
+    "zz/todo.txt": "renew passport; call the dentist\n"
+  },
+  "turns": [
+    {
+      "request": "hi",
+      "checks": [{"text_not_empty": true}, {"text_excludes": ["Qwen"]}]
+    },
+    {
+      "request": "what is your name, and what do you see in this project?",
+      "checks": [
+        {"text_contains_any": ["codebud"]},
+        {"text_excludes": ["Qwen", "Alibaba", "don't have the ability"]}
+      ]
+    },
+    {
+      "request": "what is inside the current directory?",
+      "checks": [{"text_contains_all": ["abdul", "prof", "zz"]}]
+    },
+    {
+      "request": "give me a summary of what the files in these directories say",
+      "checks": [
+        {"step_mentions_any": ["notes.txt", "syllabus.md", "todo.txt"]},
+        {"text_contains_any": ["budget", "GPU", "quantum", "syllabus", "passport", "dentist"]}
+      ]
+    },
+    {
+      "request": "how many directories are there?",
+      "checks": [{"text_contains_any": ["3", "three"]}]
+    },
+    {
+      "request": "what is 2+2?",
+      "checks": [{"text_contains_any": ["4"]}, {"no_step_contains": "|"}]
+    },
+    {
+      "request": "what is the command to find the size of a directory?",
+      "checks": [{"text_contains_any": ["du"]}, {"not_refused": true}]
+    },
+    {
+      "request": "write a C program in log_calc.c that reads an arithmetic expression as a string and prints its natural logarithm",
+      "checks": [{"file_exists_with": {"path": "log_calc.c", "contains": ["main", "log"]}}]
+    },
+    {
+      "request": "explain how the program you just wrote works",
+      "checks": [
+        {"text_excludes": [".py", "factorial"]},
+        {"step_excludes": [".py", "factorial"]},
+        {"text_contains_any": ["log"]},
+        {"any_of": [{"step_mentions_any": ["log_calc.c"]}, {"text_contains_any": ["main"]}]}
+      ]
+    },
+    {
+      "request": "which file did you write earlier?",
+      "checks": [{"text_contains_any": ["log_calc.c"]}]
+    }
+  ]
+}
