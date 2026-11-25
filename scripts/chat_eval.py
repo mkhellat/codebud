@@ -125,18 +125,19 @@ def make_fixture(root: Path, files: dict[str, str]) -> None:
 
 
 def _final_text(agent, turn_result: dict) -> str:
-    """What the user reads as the answer to this turn.
-
-    The one place to plug in answering from step output: once AgentCore can
-    answer after running steps (something like
-    ``agent.answer_after_steps(request, outcome)``), call it here and return
-    its text.  Today the agent gives no answer after steps, so it is "".
-    """
+    """What the user reads as the answer to this turn: a direct reply, the
+    answer codebud gives after running steps (when this codebud has
+    AgentCore.answer_after_steps; before it, a turn with steps has no
+    answer, ""), or the refusal or error."""
     status = turn_result["plan"].get("status")
     if status == "chat_reply":
         return str(turn_result["plan"].get("reply", ""))
     if status == "ok":
-        return ""  # <- hook: answer from turn_result["outcome"] goes here
+        outcome = turn_result.get("outcome")
+        answer = getattr(agent, "answer_after_steps", None)
+        if answer is None or outcome is None or not (outcome.ran or outcome.failed):
+            return ""
+        return answer(turn_result["request"], outcome.records)
     return str(turn_result["plan"].get("error", ""))
 
 
@@ -163,7 +164,7 @@ def play_turn(agent, request: str) -> dict:
         for rec, out in zip(steps, outcome.outputs, strict=False):
             rec["returncode"] = out.get("returncode")
             rec["stdout"] = "\n".join(str(out.get("stdout", "")).splitlines()[:3])
-    return {"plan": plan, "steps": steps, "outcome": outcome}
+    return {"plan": plan, "steps": steps, "outcome": outcome, "request": request}
 
 
 def run_model(model: str, scenario: dict) -> list[dict]:
