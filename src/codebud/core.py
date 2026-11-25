@@ -166,6 +166,12 @@ class AgentCore:
             self._history.append({"role": "assistant", "content": plan_output["error"]})
             return plan_output
 
+        # The request needs no step: the planner answered it directly.
+        if plan_output.get("status") == "reply":
+            reply = plan_output["reply"]
+            self._history.append({"role": "assistant", "content": reply})
+            return {"status": "chat_reply", "reply": reply}
+
         # If planner failed, fall back to a plain-text conversational reply
         if plan_output.get("status") != "ok":
             try:

@@ -347,20 +347,20 @@ class TestContextBudget:
         """With a small context, the oldest turns go first; the newest stays."""
         from codebud import planner as planner_mod
 
-        monkeypatch.setenv("CODEBUD_NUM_CTX", "2200")
+        monkeypatch.setenv("CODEBUD_NUM_CTX", "2300")
         planner = LLMPlanner(_make_registry(), _make_safety())
         prompt = planner._build_prompt("latest request", history=_long_history())
 
-        budget = 2200 - planner_mod._OUTPUT_RESERVE_TOKENS
+        budget = 2300 - planner_mod._OUTPUT_RESERVE_TOKENS
         assert planner_mod.estimate_tokens(prompt) <= budget
         assert "turn-05" in prompt
         assert "turn-00" not in prompt
 
     def test_instructions_and_request_always_kept(self, monkeypatch):
-        monkeypatch.setenv("CODEBUD_NUM_CTX", "2200")
+        monkeypatch.setenv("CODEBUD_NUM_CTX", "2300")
         planner = LLMPlanner(_make_registry(), _make_safety())
         prompt = planner._build_prompt("latest request", history=_long_history())
-        assert prompt.startswith("You are a precise coding-agent planner.")
+        assert prompt.startswith("You are Codebud, a local coding agent")
         assert "CRITICAL RULES" in prompt
         assert "USER REQUEST: latest request" in prompt
 
