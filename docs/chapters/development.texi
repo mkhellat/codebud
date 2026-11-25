@@ -52,6 +52,8 @@ tests/
 │                                and chapter
 ├── test_catastrophic.py         power-off, disk-erase, vital rm -r refused
 │                                whatever the allow-list (parsed, unwrapped)
+├── test_chat_eval.py            scripts/chat_eval.py: scenario file and
+│                                check functions (no model)
 ├── test_chat_input.py           / menu, toolbar, Shift-Tab (prompt_toolkit)
 ├── test_cli.py                  subcommands, doctor, display, chat REPL,
 │                                history, sessions, modes, run --yes

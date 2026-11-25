@@ -32,6 +32,7 @@ session and about 8 s for later ones.
 * The Measurement Program::   scripts/benchmark.py.
 * Project Search Evaluation:: How well codebud index finds the right files.
 * Planning with Project Context:: Which model turns context into correct plans.
+* Chat Session Evaluation::    A scripted ten-turn chat, checked automatically.
 @end menu
 
 
@@ -814,3 +815,29 @@ the context and its tools' arguments, for example:
 So the 3B model suits questions and lookups, and the 7B model edits
 (@pxref{Choosing a Model}).
 
+@node Chat Session Evaluation
+@section Chat Session Evaluation
+@cindex chat evaluation
+
+A chat is more than one plan: the model has to answer from what a step
+printed, answer a question without planning, keep its own name, and
+remember what it wrote a minute ago.  @file{scripts/chat_eval.py} plays
+the ten turns of @file{scripts/chat_eval.json} in one full-auto session in
+a fresh temporary project (three directories with one small file each) and
+checks each turn's final text and steps: ``hi'', the model's name, listing
+and counting the directories, summarising their files, @samp{what is 2+2?}
+without a pipe, the command for a directory's size, writing
+@file{log_calc.c}, explaining it, and naming the file written earlier.
+Steps really run, inside the temporary project.  It measures; the exit
+status is always 0.
+
+@example
+python scripts/chat_eval.py qwen2.5-coder:3b-instruct-q4_K_M
+python scripts/chat_eval.py --json MODEL     @r{# one JSON line per turn}
+@end example
+
+@noindent
+Ollama must be running (with a proxy in the environment, set
+@code{NO_PROXY=127.0.0.1,localhost}); a run takes several minutes per
+model on a CPU.  It prints each turn's status, checks passed and seconds,
+and a line @samp{MODEL: N/M checks passed, T s}.
