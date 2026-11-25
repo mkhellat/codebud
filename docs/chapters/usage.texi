@@ -322,6 +322,13 @@ turn with each step's command or file and its outcome, for example
 @samp{ran: command(ls -la) -> exit 0}, and the answer; the steps' output
 itself is used for that answer only and is not kept.
 
+When a request needs no step --- a greeting, a general or how-to question,
+or a question about what was said or done earlier --- Codebud answers it
+directly instead of planning.  A plan made only of @command{echo} or
+@command{printf} steps, or refused only because a step needs a shell
+(steps run without one), goes back to the model once with
+the reason before Codebud gives up on it.
+
 Other modes change these prompts: @code{auto} runs the steps after the
 plan is approved and asks only before powerful commands and web searches,
 @code{full-auto} asks nothing, and @code{plan} never runs anything

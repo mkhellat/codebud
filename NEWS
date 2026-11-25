@@ -34,6 +34,11 @@ a safety policy you can read and change.
   outcome, so later requests can refer to what happened, and replies
   speak as codebud instead of the underlying model.
 
+  Codebud answers questions, greetings and how-to requests directly
+  instead of forcing them into steps.  A plan refused only because a
+  step needs a shell, or made only of echo steps, goes back to the
+  model once with the reason.
+
 ** Privacy
 
   Prompts go only to the Ollama on this machine by default; no cloud

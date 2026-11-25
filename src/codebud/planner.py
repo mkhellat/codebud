@@ -36,6 +36,7 @@ from typing import Any
 from . import profiles
 from .llm_stub import LLMUnavailable, call_llm, num_ctx
 from .modes import prompt_note, step_allowed
+from .safety import _program_name, _split, _unwrap, shell_syntax_reason
 
 logger = logging.getLogger(__name__)
 
@@ -99,10 +100,13 @@ class LLMPlanner:
         prompt = self._build_prompt(user_message, history=history, context_hits=context_hits)
         result = self._attempt(prompt, on_chunk=on_chunk)
         if result is not None and result.get("status") == "plan_invalid":
-            # Steps miss required arguments: ask once more, saying what was
-            # wrong. The note is appended, so the cached prompt prefix holds.
+            # Steps miss required arguments, only echo, or need a shell: ask
+            # once more, saying what was wrong. The note is appended, so the
+            # cached prompt prefix holds. This is the one corrective retry.
             retry = self._attempt(
-                prompt + self._invalid_plan_note(result.pop("problems")), on_chunk=on_chunk
+                prompt + self._invalid_plan_note(result.pop("problems")),
+                on_chunk=on_chunk,
+                corrective=False,
             )
             if retry is not None:
                 retry.pop("problems", None)
@@ -114,8 +118,9 @@ class LLMPlanner:
         # First attempt failed to produce valid JSON — retry once with a
         # minimal no-preamble prompt to overcome fence-wrapping or prose.
         retry_prompt = self._build_retry_prompt(user_message)
-        result = self._attempt(retry_prompt, on_chunk=on_chunk)
+        result = self._attempt(retry_prompt, on_chunk=on_chunk, corrective=False)
         if result is not None:
+            result.pop("problems", None)
             return result
 
         return {"status": "plan_error", "error": "LLM returned invalid JSON"}
@@ -124,8 +129,11 @@ class LLMPlanner:
         self,
         prompt: str,
         on_chunk: Callable[[str], None] | None = None,
+        corrective: bool = True,
     ) -> dict[str, Any] | None:
-        """Call the LLM once and return a valid plan dict, or None on failure."""
+        """Call the LLM once and return a valid plan or reply dict, or None
+        on failure.  ``corrective`` False means no further retry follows, so
+        a plan refused only for shell syntax is refused outright."""
         try:
             llm_output = call_llm(prompt, on_chunk=on_chunk)
         except LLMUnavailable as exc:
@@ -140,10 +148,16 @@ class LLMPlanner:
         except Exception:
             return None  # signal caller to retry
 
+        if isinstance(plan_json, dict) and plan_json.get("status") == "reply":
+            reply = plan_json.get("reply")
+            if isinstance(reply, str) and reply.strip():
+                return {"status": "reply", "reply": reply.strip()}
+            return None  # an empty reply is treated like invalid JSON
+
         if not self._validate_plan_structure(plan_json):
             return {"status": "plan_error", "error": "LLM returned malformed plan"}
 
-        problems = self._arg_problems(plan_json)
+        problems = self._arg_problems(plan_json) or self._echo_problems(plan_json)
         if problems:
             return {
                 "status": "plan_invalid",
@@ -155,6 +169,13 @@ class LLMPlanner:
         # reported as such, not turned into a chat reply that hides why.
         refused = self._mode_refusal(plan_json) or self._safety_refusal(plan_json)
         if refused is not None:
+            shell = refused.pop("shell_problem", None)
+            if shell and corrective:
+                return {
+                    "status": "plan_invalid",
+                    "problems": [shell],
+                    "error": refused["error"],
+                }
             return refused
 
         return plan_json
@@ -183,12 +204,16 @@ User: "create a file called hello.py that prints Hello, world"
 {"status": "ok", "plan": [{"id": "step_0", "description": "write hello.py", "tool": "file_write", "args": {"path": "hello.py", "content": "print('Hello, world')\\n"}}]}
 
 Example 4:
-User: "add a docstring at the top of src/codebud/planner.py"
-{"status": "ok", "plan": [{"id": "step_0", "description": "read planner.py", "tool": "file_read", "args": {"path": "src/codebud/planner.py"}}, {"id": "step_1", "description": "patch in docstring", "tool": "patch", "args": {"patch": "--- a/src/codebud/planner.py\n+++ b/src/codebud/planner.py\n@@ -0,0 +1,2 @@\n+\"\"\"LLM-driven planner.\"\"\"\n+\n"}}]}
+User: "add a docstring at the top of src/app/main.py"
+{"status": "ok", "plan": [{"id": "step_0", "description": "read main.py", "tool": "file_read", "args": {"path": "src/app/main.py"}}, {"id": "step_1", "description": "patch in docstring", "tool": "patch", "args": {"patch": "--- a/src/app/main.py\n+++ b/src/app/main.py\n@@ -0,0 +1,2 @@\n+\"\"\"Entry point.\"\"\"\n+\n"}}]}
 
 Example 5:
 User: "order me a pizza"
 {"status": "plan_error", "error": "This request cannot be fulfilled with the available tools."}
+
+Example 6:
+User: "how do I see how big a directory is?"
+{"status": "reply", "reply": "Run du -sh <directory>."}
 """
 
     # Maximum number of prior turns to inject into the prompt.
@@ -263,7 +288,7 @@ User: "order me a pizza"
         mode_block = prompt_note(getattr(self.safety_engine, "mode", "")) + profiles.prompt_note()
 
         return f"""\
-You are a precise coding-agent planner. Your ONLY job is to output a JSON plan.
+You are Codebud, a local coding agent working in this project. Output a JSON plan, or a reply when no tool is needed.
 
 CRITICAL RULES:
 1. Output ONLY valid JSON. No prose, no markdown, no code fences, no explanation.
@@ -275,6 +300,7 @@ CRITICAL RULES:
 7. To change a few lines in a file use "patch", not "file_write". Never put shell variables or command substitution inside "file_write" content.
 8. Work carefully but get the job done: keep changes inside the project, read a file before changing it, and never delete or overwrite anything the request did not ask for.
 9. Commands run WITHOUT a shell: no pipes (|), redirection (>, >>, <, 2>), && || ;, $(...), backticks or globbing (* is passed as is). One program per step: use its own options (grep -c, find -name), separate steps for separate programs, file_write to save text.
+10. Never use echo or printf steps to answer or explain: reply instead.
 
 AVAILABLE TOOLS:
 {tool_descriptions}
@@ -284,6 +310,9 @@ SAFETY RULES (commands violating these will be rejected):
 
 RESPONSE FORMAT:
 {{"status": "ok", "plan": [{{"id": "step_0", "description": "...", "tool": "...", "args": {{...}}}}]}}
+
+When no tool is needed (greetings, questions, how-to, or answering from the conversation history):
+{{"status": "reply", "reply": "<the answer>"}}
 
 On failure:
 {{"status": "plan_error", "error": "reason"}}
@@ -322,7 +351,7 @@ Commands run without a shell: no pipes, redirection, && or ;. One program per st
 
 Produce a plan for: {user_message}
 
-Format: {{"status":"ok","plan":[{{"id":"step_0","description":"...","tool":"...","args":{{...}}}}]}}
+Format: {{"status":"ok","plan":[{{"id":"step_0","description":"...","tool":"...","args":{{...}}}}]}} or, when no tool is needed, {{"status":"reply","reply":"..."}}
 """
 
     # ------------------------------------------------------------------
@@ -397,12 +426,26 @@ Format: {{"status":"ok","plan":[{{"id":"step_0","description":"...","tool":"..."
         return problems
 
     @staticmethod
+    def _echo_problems(plan_json: dict[str, Any]) -> list[str]:
+        """Flag a plan made only of echo/printf steps: it fakes an answer."""
+        plan = plan_json.get("plan", [])
+        for step in plan:
+            if step.get("tool") != "command":
+                return []
+            words = _unwrap(_split(str(step.get("args", {}).get("cmd", ""))))
+            if not words or _program_name(words[0]) not in ("echo", "printf"):
+                return []
+        if not plan:
+            return []
+        return ["every step is echo or printf, which only prints text; answer with the reply form"]
+
+    @staticmethod
     def _invalid_plan_note(problems: list[str]) -> str:
         lines = "\n".join(f"- {p}" for p in problems)
         return (
             f"\nYOUR PREVIOUS PLAN WAS INVALID:\n{lines}\n"
             "Use exactly the argument names listed under AVAILABLE TOOLS, and real paths. "
-            "Output the corrected JSON plan only.\n"
+            "Output the corrected JSON plan, or a reply, only.\n"
         )
 
     def _safety_refusal(self, plan_json: dict[str, Any]) -> dict[str, Any] | None:
@@ -412,10 +455,17 @@ Format: {{"status":"ok","plan":[{{"id":"step_0","description":"...","tool":"..."
                 continue
             reason = self.safety_engine.refusal_reason(step) or "refused by the safety policy"
             what = step.get("args", {}).get("cmd") or step.get("tool")
-            return {
+            refusal = {
                 "status": "plan_refused",
                 "error": f"The safety policy refused step {number} ({what}): {reason}.",
             }
+            cmd = step.get("args", {}).get("cmd") if step.get("tool") == "command" else None
+            if isinstance(cmd, str) and reason == shell_syntax_reason(cmd):
+                # Refused only for shell syntax: worth one correction.
+                refusal["shell_problem"] = (
+                    f"step {number}: {reason}. Rewrite it without a shell, or reply"
+                )
+            return refusal
         return None
 
     # ------------------------------------------------------------------
