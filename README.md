@@ -141,6 +141,12 @@ for the full list.
 | `make clean` / `make distclean` | Remove what make / configure produced |
 | `make maintainer-clean` | Back to a fresh checkout (then `./bootstrap`); `make clean-venv` also drops `.venv/` |
 
+Verifying a release: the tarball's signing key (OpenPGP fingerprint
+`EDF5FECE5EDCA5C19A9F09F63A57BF9087907F86`) is published at <https://github.com/mkhellat.gpg>. After importing it,
+`gpg --verify codebud-X.Y.Z.tar.gz.sig codebud-X.Y.Z.tar.gz` must report a good
+signature from that fingerprint (the warning that the key is not certified is
+expected). See the Installation chapter of the manual for details.
+
 For working on codebud itself:
 
 ```bash
