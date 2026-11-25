@@ -589,6 +589,9 @@ class TestSubcommandRouting:
         ran = {}
 
         class FakeAgent:
+            def answer_after_steps(self, message, records, on_chunk=None):
+                return ""
+
             executor = MagicMock()
             executor.execute_plan = MagicMock(
                 return_value={
@@ -632,6 +635,9 @@ class TestSubcommandRouting:
 
     def _fake_agent_with_plan(self, plan):
         class FakeAgent:
+            def answer_after_steps(self, message, records, on_chunk=None):
+                return ""
+
             executor = MagicMock()
             executor.execute_plan = MagicMock(
                 return_value={
@@ -860,6 +866,9 @@ class TestSubcommandRouting:
         full_output = "\n".join(f"line{i}" for i in range(1, 30))
 
         class FakeAgent:
+            def answer_after_steps(self, message, records, on_chunk=None):
+                return ""
+
             executor = MagicMock()
             executor.execute_plan = MagicMock(
                 return_value={
@@ -909,6 +918,9 @@ class TestPlanSubcommand:
 
     def _fake_agent_with_plan(self, plan, stdout=""):
         class FakeAgent:
+            def answer_after_steps(self, message, records, on_chunk=None):
+                return ""
+
             executor = MagicMock()
             executor.execute_plan = MagicMock(
                 return_value={
@@ -1084,6 +1096,9 @@ def _web_search_plan(query="latest ruff release"):
 
 class FakeChatAgent:
     """Stand-in for AgentCore driven entirely through its public API."""
+
+    def answer_after_steps(self, message, records, on_chunk=None):
+        return ""
 
     def __init__(
         self, plan_by_message=None, model="fake-model", set_model_result=None, usage=(500, 8192)

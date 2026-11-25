@@ -26,6 +26,7 @@ from .executor import Executor
 from .llm_stub import (
     LLMUnavailable,
     ModelHeartbeat,
+    call_llm_answer,
     call_llm_plain,
     list_models,
     num_ctx,
@@ -194,6 +195,50 @@ class AgentCore:
         self._history.append({"role": "assistant", "content": f"planned: {step_summaries}"})
 
         return plan_output
+
+    def answer_after_steps(
+        self,
+        message: str,
+        records: list[dict[str, Any]],
+        on_chunk: Callable[[str], None] | None = None,
+    ) -> str:
+        """Read the results of the steps just run and answer ``message``.
+
+        ``records`` is StepsOutcome.records. Returns "" without a model call
+        when no step ran. The "planned: ..." history entry of this turn
+        becomes an outcome entry -- each step's tool and target (never the
+        model's free-text description, security review M1) and its status --
+        followed by the answer. Step outputs go into this one prompt only,
+        never into the history. If the model is unavailable the outcome entry
+        is kept and "" is returned.
+        """
+        if not any(r.get("status") in ("ok", "failed") for r in records):
+            return ""
+        parts = []
+        for record in records:
+            result = record.get("result") or {}
+            status = record.get("status")
+            if status in ("ok", "failed") and "returncode" in result:
+                state = f"exit {result['returncode']}"
+            elif status == "ok":
+                state = "ok"
+            else:
+                state = "not run" if status == "unconfirmed" else str(status)
+            parts.append(f"{step_summary(record.get('step') or {})} -> {state}")
+        entry = {"role": "assistant", "content": "ran: " + "; ".join(parts)}
+        if self._history and self._history[-1]["content"].startswith("planned:"):
+            self._history[-1] = entry
+        else:
+            self._history.append(entry)
+        try:
+            reply = call_llm_answer(
+                message, records, history=self._history[:-2], on_chunk=on_chunk
+            ).strip()
+        except LLMUnavailable:
+            return ""
+        if reply:
+            entry["content"] += f"\n{reply}"
+        return reply
 
     def clear_history(self) -> None:
         """Wipe the conversation history (used by /clear in chat mode)."""

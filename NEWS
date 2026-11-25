@@ -28,6 +28,12 @@ a safety policy you can read and change.
   A failed step shows what it printed and why it failed (its standard
   error in full), and a refused step shows the reason.
 
+  After running steps, codebud reads their output and answers the
+  request in a few sentences (secrets in the output are masked, and the
+  output is bounded).  The conversation history records each step's
+  outcome, so later requests can refer to what happened, and replies
+  speak as codebud instead of the underlying model.
+
 ** Privacy
 
   Prompts go only to the Ollama on this machine by default; no cloud

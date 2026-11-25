@@ -35,8 +35,9 @@ nobase_python_PYTHON = \
 	codebud/memory.py \
 	codebud/modes.py \
 	codebud/paths.py \
-	codebud/policy.py \
+	codebud/persona.py \
 	codebud/planner.py \
+	codebud/policy.py \
 	codebud/privacy.py \
 	codebud/profiles.py \
 	codebud/rag/__init__.py \
