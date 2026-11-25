@@ -363,6 +363,30 @@ make && make check
 
 @var{LINKDIR} can be overridden: @code{make install-link LINKDIR=/usr/local/bin}.
 
+@subsection Checking a release tarball
+
+Each release on GitHub comes with the tarball, a detached OpenPGP
+signature (@file{codebud-@var{X.Y.Z}.tar.gz.sig}) and a SHA-256 checksum
+(@file{codebud-@var{X.Y.Z}.tar.gz.sha256}).  The signing key is published
+on GitHub only.  To check a download (here, version 0.1.0):
+
+@example
+curl -sL https://github.com/mkhellat.gpg | gpg --import
+gpg --fingerprint EDF5FECE5EDCA5C19A9F09F63A57BF9087907F86
+gpg --verify codebud-0.1.0.tar.gz.sig codebud-0.1.0.tar.gz
+sha256sum -c codebud-0.1.0.tar.gz.sha256
+@end example
+
+@noindent
+The fingerprint that @command{gpg --fingerprint} prints, in groups of
+four, must be @code{EDF5 FECE 5EDC A5C1 9A9F  09F6 3A57 BF90 8790 7F86}
+(the same as @code{EDF5FECE5EDCA5C19A9F09F63A57BF9087907F86}, given
+also in the development chapter and the @file{README.md}).
+@command{gpg --verify} must report a
+good signature made by that fingerprint.  Its warning that the key is not
+certified with a trusted signature is expected, unless you have certified
+the key yourself; it does not mean the signature is bad.
+
 
 @node Verifying the Install
 @section Verifying the Install

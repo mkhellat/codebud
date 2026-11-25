@@ -672,8 +672,15 @@ gpg --armor --export @var{fingerprint} > codebud-signing-key.asc
 
 @noindent
 and publishes the public key (@file{codebud-signing-key.asc}) where users
-can check it against the fingerprint: the key's settings on GitHub and
-Codeberg, and @uref{https://keys.openpgp.org}.  The private key and its
+can check it against the fingerprint.  It is published on GitHub only,
+in the key settings of the maintainer's account, which serves it at
+@uref{https://github.com/mkhellat.gpg}.  It is not on Codeberg, which is
+only a backup remote (GitHub is the release point), nor on
+@uref{https://keys.openpgp.org}, which verifies a user ID by mailing the
+address, and the GitHub noreply address in the key's only user ID cannot
+receive mail.  The fingerprint of Codebud's key (ed25519, signing, expires
+2028-11-24) is
+@code{EDF5FECE5EDCA5C19A9F09F63A57BF9087907F86}.  The private key and its
 passphrase never leave the maintainer's machine, and the expiry date is
 extended (@samp{gpg --quick-set-expire}) before it runs out.  In the GitHub
 repository settings, the @code{pypi} environment can be limited to
@@ -700,9 +707,13 @@ pip install --index-url https://test.pypi.org/simple/ \
 @example
 make release-sign      @r{# codebud-0.1.0.tar.gz.sig and .sha256}
 @end example
-@item Tag with a signature and push the tag to both remotes:
+@item Tag with a signature and push the tag to both remotes (@code{github},
+and @code{origin}, the Codeberg backup).  GitHub marks a signed tag
+@samp{Verified} only when the tagger's email address matches a user ID on
+the key, so the tagger address is set to the key's noreply address:
 @example
-git tag -s v0.1.0 -m "codebud 0.1.0"
+git -c user.email=69145591+mkhellat@@users.noreply.github.com \
+    tag -s v0.1.0 -m "codebud 0.1.0"
 git tag -v v0.1.0
 git push github v0.1.0
 git push origin v0.1.0
@@ -716,8 +727,7 @@ gh release create v0.1.0 --title "codebud 0.1.0" --notes-file @var{notes} \
     codebud-0.1.0.tar.gz codebud-0.1.0.tar.gz.sig codebud-0.1.0.tar.gz.sha256
 @end example
 @noindent
-and the same on Codeberg (@samp{Releases} @result{} @samp{New release},
-for the existing tag).
+GitHub is the release point; Codeberg only mirrors the tag.
 @item Start the next version: add a heading
 @samp{* Noteworthy changes in release @var{next} (unreleased)} on top of
 @file{NEWS}, with @var{next} a provisional guess.  @file{pyproject.toml}
