@@ -274,6 +274,7 @@ CRITICAL RULES:
 6. To run tests use: {{"tool": "command", "args": {{"cmd": "pytest -q"}}}}
 7. To change a few lines in a file use "patch", not "file_write". Never put shell variables or command substitution inside "file_write" content.
 8. Work carefully but get the job done: keep changes inside the project, read a file before changing it, and never delete or overwrite anything the request did not ask for.
+9. Commands run WITHOUT a shell: no pipes (|), redirection (>, >>, <, 2>), && || ;, $(...), backticks or globbing (* is passed as is). One program per step: use its own options (grep -c, find -name), separate steps for separate programs, file_write to save text.
 
 AVAILABLE TOOLS:
 {tool_descriptions}
@@ -317,6 +318,7 @@ USER REQUEST: {user_message}
 OUTPUT ONLY VALID JSON. No markdown. No code fences. No text before or after the JSON.
 
 Tools available: {tool_names}
+Commands run without a shell: no pipes, redirection, && or ;. One program per step.
 
 Produce a plan for: {user_message}
 

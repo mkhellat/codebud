@@ -294,6 +294,16 @@ as literal argument characters, not operators, so @code{ls; rm -rf ~} is
 just @command{ls} with two odd arguments.  Pipelines are not supported:
 @code{sh} is not on the allow-list.
 
+Because a program would receive such an operator as plain text (a plan
+that ran @code{echo 2+2 | bc} would print @samp{2+2 | bc}), a step whose
+words include a standalone shell operator (@code{|}, @code{&&},
+@code{;}, @code{>}, @code{2>&1}, @code{<}, @dots{}) or a command
+substitution (@code{$(@dots{})}, backticks) is refused, with the reason
+that steps run without a shell.  Pipes, redirection, @code{&&},
+@code{;}, command substitution and globbing are not interpreted: use one
+program per step and its own options.  A word that merely contains such
+a character, like @code{grep 'a|b'}, is an ordinary argument.
+
 @strong{Isolation.}  At privacy level @code{private} (the default) and
 @code{locked}, every command runs isolated with bubblewrap: no network
 unless the step declared it, the file system read-only except the project

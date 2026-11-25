@@ -48,6 +48,57 @@ def _split(cmd: str) -> list[str]:
         return []
 
 
+_OPERATOR_CHARS = "|&;<>"
+
+
+def _shell_token(cmd: str) -> str | None:
+    """The first unquoted shell operator or substitution in ``cmd``, or None.
+
+    Quote-aware like a shell: quoted text is literal, so '<div>', ">" and
+    "a && b" are ordinary arguments. A run of unquoted | & ; < > is one
+    operator (|, &&, >>, >&, ...); $( and a backtick count unless inside
+    single quotes.
+    """
+    quote = ""  # "'" or '"' while inside quotes
+    i = 0
+    while i < len(cmd):
+        ch = cmd[i]
+        if ch == "\\" and quote != "'":
+            i += 2
+            continue
+        if quote:
+            if ch == quote:
+                quote = ""
+        elif ch in "'\"":
+            quote = ch
+        elif ch in _OPERATOR_CHARS:
+            end = i
+            while end < len(cmd) and cmd[end] in _OPERATOR_CHARS:
+                end += 1
+            return cmd[i:end]
+        if quote != "'" and (ch == "`" or cmd.startswith("$(", i)):
+            return "`...`" if ch == "`" else "$(...)"
+        i += 1
+    return None
+
+
+def shell_syntax_reason(cmd: str) -> str | None:
+    """Why ``cmd`` relies on a shell, which steps do not have, or None.
+
+    An unquoted operator (|, &&, ;, >, 2>&1, ...) or a command substitution
+    would reach the program as plain text.
+    """
+    token = _shell_token(cmd)
+    if token is None:
+        return None
+    words = _split(cmd)
+    program = _program_name(_unwrap(words)[0]) if _unwrap(words) else "the program"
+    return (
+        f"`{token}` would reach {program} as plain text: steps run without a shell. "
+        "Use one program per step and its own options, or separate steps."
+    )
+
+
 def _starts_with_words(words: list[str], entry: str) -> bool:
     """Return whether ``words`` begins with all the words of ``entry``."""
     entry_words = entry.split()
@@ -760,6 +811,9 @@ class SafetyEngine:
                 return reason
             if not start and name in _ARGUMENT_FEEDERS:
                 feeder = name
+        no_shell = shell_syntax_reason(cmd)
+        if no_shell:
+            return no_shell
         allowed = (*self.harmless_commands, *self.powerful_commands)
         if not any(_starts_with_words(words, entry) for entry in allowed):
             return (
