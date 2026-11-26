@@ -57,6 +57,14 @@ def estimate_tokens(text: str) -> int:
     return len(text) // _CHARS_PER_TOKEN + 1
 
 
+def _plain(text: object) -> str:
+    """``text`` for a one-line message: control characters shown as escapes."""
+    return "".join(
+        ch if ch.isprintable() else {"\n": "\\n", "\t": "\\t"}.get(ch, repr(ch)[1:-1])
+        for ch in str(text)
+    )
+
+
 class LLMPlanner:
     """
     LLM-driven planner that produces a linear plan in JSON format.
@@ -454,16 +462,18 @@ Format: {{"status":"ok","plan":[{{"id":"step_0","description":"...","tool":"..."
             if self.safety_engine.validate_step(step):
                 continue
             reason = self.safety_engine.refusal_reason(step) or "refused by the safety policy"
-            what = step.get("args", {}).get("cmd") or step.get("tool")
+            what = _plain(step.get("args", {}).get("cmd") or step.get("tool"))
             refusal = {
                 "status": "plan_refused",
-                "error": f"The safety policy refused step {number} ({what}): {reason}.",
+                "error": (
+                    f"The safety policy refused step {number} ({what}): {reason.rstrip().rstrip('.')}."
+                ),
             }
             cmd = step.get("args", {}).get("cmd") if step.get("tool") == "command" else None
             if isinstance(cmd, str) and reason == shell_syntax_reason(cmd):
                 # Refused only for shell syntax: worth one correction.
                 refusal["shell_problem"] = (
-                    f"step {number}: {reason}. Rewrite it without a shell, or reply"
+                    f"step {number}: {reason.rstrip().rstrip('.')}. Rewrite it without a shell, or reply"
                 )
             return refusal
         return None

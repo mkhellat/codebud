@@ -88,3 +88,46 @@ def test_the_planner_prompt_says_commands_run_without_a_shell():
     safety.describe_rules.return_value = "No dangerous commands."
     prompt = LLMPlanner(registry, safety)._build_prompt("x")
     assert "without a shell" in prompt.lower()
+
+
+def _refusal(cmd):
+    from codebud.planner import LLMPlanner
+
+    planner = LLMPlanner(MagicMock(), _engine())
+    return planner._safety_refusal({"plan": [_step(cmd)]})
+
+
+def test_shell_refusal_gets_shell_advice_not_allow_list_advice():
+    from codebud.cli.errors import explain
+
+    error = _refusal("ls | wc -l")["error"]
+    explanation, fix = explain(error)
+    assert "without one" in explanation
+    assert "harmless_commands" not in fix
+    assert "Rephrase" in fix
+
+
+def test_allow_list_refusal_keeps_allow_list_advice():
+    from codebud.cli.errors import explain
+
+    _, fix = explain("The safety policy refused step 1 (du): du is not on the allow-list")
+    assert "harmless_commands.json" in fix
+
+
+def test_engagement_scope_rule_still_wins():
+    from codebud.cli.errors import explain
+
+    explanation, _ = explain("The safety policy refused step 1 (x): engagement scope: no")
+    assert "engagement" in explanation
+
+
+def test_refusal_message_has_no_double_full_stop():
+    error = _refusal("ls | wc -l")["error"]
+    assert error.endswith("separate steps.")
+    assert ".." not in error
+
+
+def test_command_with_control_characters_is_shown_escaped():
+    error = _refusal("find . -printf '%f\n\t' | sort")["error"]
+    assert "\n" not in error and "\t" not in error
+    assert "'%f\\n\\t'" in error
