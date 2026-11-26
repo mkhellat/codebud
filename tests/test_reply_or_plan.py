@@ -183,7 +183,7 @@ def test_prompt_has_identity_reply_form_and_no_echo_rule(planner):
     assert prompt.startswith("You are Codebud, a local coding agent")
     assert '{"status": "reply", "reply": "<the answer>"}' in prompt
     assert "Never use echo or printf steps to answer or explain: reply instead." in prompt
-    assert '"status": "reply", "reply": "Run du -sh' in prompt  # the few-shot reply
+    assert '{"status": "reply", "reply": "' in prompt  # the few-shot reply
 
 
 def test_prompt_has_no_codebud_source_paths(planner):

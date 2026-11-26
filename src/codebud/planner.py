@@ -200,16 +200,16 @@ class LLMPlanner:
 EXAMPLES:
 
 Example 1:
-User: "list the files in the current directory"
-{"status": "ok", "plan": [{"id": "step_0", "description": "list files", "tool": "command", "args": {"cmd": "ls -la"}}]}
+User: "show the last three commits"
+{"status": "ok", "plan": [{"id": "step_0", "description": "show recent commits", "tool": "command", "args": {"cmd": "git log --oneline -3"}}]}
 
 Example 2:
 User: "run the tests and tell me which ones fail"
 {"status": "ok", "plan": [{"id": "step_0", "description": "run pytest", "tool": "command", "args": {"cmd": "pytest -q"}}]}
 
 Example 3:
-User: "create a file called hello.py that prints Hello, world"
-{"status": "ok", "plan": [{"id": "step_0", "description": "write hello.py", "tool": "file_write", "args": {"path": "hello.py", "content": "print('Hello, world')\\n"}}]}
+User: "add a .gitignore that ignores the build directory"
+{"status": "ok", "plan": [{"id": "step_0", "description": "write .gitignore", "tool": "file_write", "args": {"path": ".gitignore", "content": "build/\\n"}}]}
 
 Example 4:
 User: "add a docstring at the top of src/app/main.py"
@@ -220,8 +220,8 @@ User: "order me a pizza"
 {"status": "plan_error", "error": "This request cannot be fulfilled with the available tools."}
 
 Example 6:
-User: "how do I see how big a directory is?"
-{"status": "reply", "reply": "Run du -sh <directory>."}
+User: "what does the -r flag of grep do?"
+{"status": "reply", "reply": "It makes grep search directories recursively."}
 """
 
     # Maximum number of prior turns to inject into the prompt.
