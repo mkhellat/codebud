@@ -1426,6 +1426,12 @@ Default: @code{8192}.  Raise it if you work with long conversations or
 large files; see @ref{Environment Variables Overview} for the memory
 cost.
 
+@item CODEBUD_TEMPERATURE
+@itemx CODEBUD_SEED
+Not set by default.  Sampling temperature (a number) and seed (an
+integer) sent to the model with every request, to make runs repeatable.
+Invalid values are ignored with a warning.
+
 @item EMBED_MODEL
 The dedicated embedding model used by the @code{search_embeddings}
 tool.  Defaults to @code{all-minilm},

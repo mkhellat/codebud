@@ -21,6 +21,13 @@ Usage (from the repository root, Ollama running):
     python scripts/chat_eval.py MODEL_A MODEL_B
     python scripts/chat_eval.py --json MODEL      # one JSON line per turn
     python scripts/chat_eval.py --scenario scripts/chat_eval_logs.json MODEL
+    python scripts/chat_eval.py --repeat 3 MODEL  # 3 runs: score min/mean/max
+
+The model samples, so one run cannot tell two code versions apart (the
+same scenario scored 12/13 and 9/13).  Runs therefore use temperature 0
+and seed 42 by default (--temperature, --seed; sent to codebud as
+CODEBUD_TEMPERATURE and CODEBUD_SEED), and --repeat N plays the scenario
+N times, each in a fresh process and a fresh fixture.
 
 With a proxy in the environment, local Ollama needs
 NO_PROXY=127.0.0.1,localhost.  A run takes several minutes per model on a
@@ -62,6 +69,8 @@ KNOWN_CHECKS = {
 }
 
 DEFAULT_TURN_TIMEOUT = 300
+DEFAULT_TEMPERATURE = 0.0
+DEFAULT_SEED = 42
 
 REFUSED = ("plan_refused", "plan_invalid", "plan_error", "llm_unavailable")
 
@@ -215,12 +224,19 @@ def _failed_record(model: str, number: int, turn: dict, status: str, seconds: in
     }
 
 
-def _child_main(model: str, scenario: dict, tmp: str, turn_runner, conn) -> None:
+def _child_main(
+    model: str, scenario: dict, tmp: str, turn_runner, conn, temperature=None, seed=None
+) -> None:
     """Child process: play every turn for one model inside the temporary
     directory TMP, sending {"ready": True} and then one record per finished
     turn through CONN.  TURN_RUNNER(agent, request) replaces play_turn (and
-    the agent is None) when given: a test hook."""
+    the agent is None) when given: a test hook.  TEMPERATURE and SEED, when
+    not None, are set as CODEBUD_TEMPERATURE and CODEBUD_SEED before the
+    agent is created."""
     os.environ["OLLAMA_MODEL"] = model
+    for name, value in (("CODEBUD_TEMPERATURE", temperature), ("CODEBUD_SEED", seed)):
+        if value is not None:
+            os.environ[name] = str(value)
     tmp_path = Path(tmp)
     project = tmp_path / "project"
     project.mkdir()
@@ -277,16 +293,22 @@ def run_model(
     turn_timeout: float = DEFAULT_TURN_TIMEOUT,
     turn_runner=None,
     progress=None,
+    temperature: float | None = None,
+    seed: int | None = None,
+    run: int = 1,
 ) -> list[dict]:
     """Play every turn for one model in a child process; return one record
     per turn.  A turn that takes longer than TURN_TIMEOUT seconds is
     abandoned (child terminated) and recorded with status "timeout"; the
     later turns depend on it, so they are recorded as "skipped".  PROGRESS,
-    if given, is called with each record as it arrives."""
+    if given, is called with each record as it arrives.  Every record carries
+    "run" (RUN, the index of this repetition).  TEMPERATURE and SEED go to
+    the child (see _child_main)."""
     turns = scenario["turns"]
     records: list[dict] = []
 
     def add(record: dict) -> None:
+        record["run"] = run
         records.append(record)
         if progress is not None:
             progress(record)
@@ -296,7 +318,7 @@ def run_model(
         parent_conn, child_conn = ctx.Pipe(duplex=False)
         proc = ctx.Process(
             target=_child_main,
-            args=(model, scenario, tmp, turn_runner, child_conn),
+            args=(model, scenario, tmp, turn_runner, child_conn, temperature, seed),
             daemon=True,
         )
         proc.start()
@@ -349,42 +371,96 @@ def build_parser() -> argparse.ArgumentParser:
         help="abandon a turn that takes longer, skip the model's later turns "
         f"(default: {DEFAULT_TURN_TIMEOUT})",
     )
+    parser.add_argument(
+        "--temperature",
+        type=float,
+        default=DEFAULT_TEMPERATURE,
+        help=f"sampling temperature sent to the model (default: {DEFAULT_TEMPERATURE:g})",
+    )
+    parser.add_argument(
+        "--seed",
+        type=int,
+        default=DEFAULT_SEED,
+        help=f"sampling seed sent to the model (default: {DEFAULT_SEED})",
+    )
+    parser.add_argument(
+        "--repeat",
+        type=int,
+        default=1,
+        metavar="N",
+        help="play each model's scenario N times, each in a fresh process (default: 1)",
+    )
     return parser
 
 
 def _progress(record: dict) -> None:
     """Report a finished turn on stderr (stdout keeps the table / JSON)."""
     print(
-        f"[{record['model']}] turn {record['turn']}: {record['status']}, {record['seconds']} s",
+        f"[{record['model']}] run {record.get('run', 1)} turn {record['turn']}: "
+        f"{record['status']}, {record['seconds']} s",
         file=sys.stderr,
         flush=True,
     )
 
 
-def main() -> int:
-    args = build_parser().parse_args()
+def score(records: list[dict]) -> tuple[int, int]:
+    """(checks passed, checks in all) over the records of one run."""
+    return (
+        sum(c["passed"] for r in records for c in r["checks"]),
+        sum(len(r["checks"]) for r in records),
+    )
+
+
+def summarize(model: str, runs: list[list[dict]]) -> str:
+    """One summary line for MODEL from its RUNS (one record list each)."""
+    scores = [score(records) for records in runs]
+    seconds = sum(r["seconds"] for records in runs for r in records)
+    timeouts = sum(r["status"] == "timeout" for records in runs for r in records)
+    if len(runs) == 1:
+        line = f"{model}: {scores[0][0]}/{scores[0][1]} checks passed, {seconds} s"
+    else:
+        passed = [p for p, _ in scores]
+        line = (
+            f"{model}: runs {' '.join(f'{p}/{t}' for p, t in scores)} "
+            f"(min {min(passed)}, mean {sum(passed) / len(passed):.1f}, max {max(passed)}), "
+            f"{seconds} s"
+        )
+    if timeouts:
+        line += f", {timeouts} turn{'s' if timeouts != 1 else ''} timed out"
+    return line
+
+
+def main(argv: list[str] | None = None) -> int:
+    args = build_parser().parse_args(argv)
+    if args.repeat < 1:
+        build_parser().error("--repeat must be at least 1")
     scenario = load_scenario(args.scenario)
 
     summary = []
     for model in args.models:
-        records = run_model(model, scenario, args.turn_timeout, progress=_progress)
-        for rec in records:
-            if args.json:
-                print(json.dumps(rec), flush=True)
-                continue
-            passed = sum(c["passed"] for c in rec["checks"])
-            print(
-                f"{rec['turn']:2d}  {str(rec['status']):12s}  "
-                f"{passed}/{len(rec['checks'])}  {rec['seconds']:4d} s  {rec['request'][:50]}"
+        runs = []
+        for run in range(1, args.repeat + 1):
+            records = run_model(
+                model,
+                scenario,
+                args.turn_timeout,
+                progress=_progress,
+                temperature=args.temperature,
+                seed=args.seed,
+                run=run,
             )
-        total = sum(len(r["checks"]) for r in records)
-        passed = sum(c["passed"] for r in records for c in r["checks"])
-        seconds = sum(r["seconds"] for r in records)
-        timeouts = sum(r["status"] == "timeout" for r in records)
-        line = f"{model}: {passed}/{total} checks passed, {seconds} s"
-        if timeouts:
-            line += f", {timeouts} turn{'s' if timeouts != 1 else ''} timed out"
-        summary.append(line)
+            runs.append(records)
+            for rec in records:
+                if args.json:
+                    print(json.dumps(rec), flush=True)
+                    continue
+                passed = sum(c["passed"] for c in rec["checks"])
+                prefix = f"run {run}  " if args.repeat > 1 else ""
+                print(
+                    f"{prefix}{rec['turn']:2d}  {str(rec['status']):12s}  "
+                    f"{passed}/{len(rec['checks'])}  {rec['seconds']:4d} s  {rec['request'][:50]}"
+                )
+        summary.append(summarize(model, runs))
     if not args.json:
         print("\n" + "\n".join(summary))
     return 0

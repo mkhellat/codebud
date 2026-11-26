@@ -216,6 +216,85 @@ class TestArguments:
         assert parser.parse_args(["m"]).turn_timeout == 300
         assert parser.parse_args(["--turn-timeout", "2.5", "m"]).turn_timeout == 2.5
 
+    def test_sampling_and_repeat_defaults_and_overrides(self):
+        parser = chat_eval.build_parser()
+        args = parser.parse_args(["m"])
+        assert (args.temperature, args.seed, args.repeat) == (0.0, 42, 1)
+        args = parser.parse_args(["--temperature", "0.7", "--seed", "5", "--repeat", "3", "m"])
+        assert (args.temperature, args.seed, args.repeat) == (0.7, 5, 3)
+
+    def test_repeat_must_be_positive(self):
+        with pytest.raises(SystemExit):
+            chat_eval.main(["--repeat", "0", "m"])
+
+
+def env_turn(agent, request):
+    """Fake play_turn: reports the sampling environment it was started with."""
+    text = f"{os.environ.get('CODEBUD_TEMPERATURE')}/{os.environ.get('CODEBUD_SEED')}"
+    return {"plan": {"status": "chat_reply", "reply": text}, "steps": []}
+
+
+class TestRepeat:
+    scenario = {
+        "fixture": {"a.txt": "x"},
+        "turns": [{"request": "only", "checks": [{"text_contains_any": ["0.5/9"]}]}],
+    }
+
+    def test_child_gets_temperature_and_seed(self):
+        records = chat_eval.run_model(
+            "m", self.scenario, 30, turn_runner=env_turn, temperature=0.5, seed=9, run=3
+        )
+        assert records[0]["final_text"] == "0.5/9"
+        assert records[0]["run"] == 3
+        assert all(c["passed"] for c in records[0]["checks"])
+
+    def test_unset_leaves_the_environment_alone(self, monkeypatch):
+        monkeypatch.delenv("CODEBUD_TEMPERATURE", raising=False)
+        monkeypatch.delenv("CODEBUD_SEED", raising=False)
+        records = chat_eval.run_model("m", self.scenario, 30, turn_runner=env_turn)
+        assert records[0]["final_text"] == "None/None"
+        assert records[0]["run"] == 1
+
+    def test_main_repeats_with_run_indices_and_summary(self, tmp_path, monkeypatch, capsys):
+        import json
+
+        path = tmp_path / "scenario.json"
+        path.write_text(json.dumps(self.scenario))
+        real = chat_eval.run_model
+        seen = []
+
+        def fake(m, sc, t, progress=None, **kw):
+            seen.append(kw)
+            records = real(m, sc, t, turn_runner=env_turn, progress=progress, **kw)
+            if kw["run"] != 2:  # runs 1 and 3 fail their check
+                for c in records[0]["checks"]:
+                    c["passed"] = False
+            return records
+
+        monkeypatch.setattr(chat_eval, "run_model", fake)
+        argv = ["--repeat", "3", "--temperature", "0.5", "--seed", "9", "--scenario", str(path)]
+        assert chat_eval.main([*argv, "--json", "m"]) == 0
+        out, _ = capsys.readouterr()
+        rows = [json.loads(line) for line in out.splitlines()]
+        assert [r["run"] for r in rows] == [1, 2, 3]
+        assert [k["run"] for k in seen] == [1, 2, 3]
+        assert all(k["temperature"] == 0.5 and k["seed"] == 9 for k in seen)
+        assert chat_eval.main([*argv, "m"]) == 0
+        out, _ = capsys.readouterr()
+        assert "m: runs 0/1 1/1 0/1 (min 0, mean 0.3, max 1)" in out
+
+    def test_summarize_single_run_keeps_the_old_line(self):
+        rec = {"checks": [{"passed": True}, {"passed": False}], "seconds": 4, "status": "ok"}
+        assert chat_eval.summarize("m", [[rec]]) == "m: 1/2 checks passed, 4 s"
+
+    def test_summarize_many_runs(self):
+        def run(passed, total, seconds):
+            checks = [{"passed": i < passed} for i in range(total)]
+            return [{"checks": checks, "seconds": seconds, "status": "ok"}]
+
+        line = chat_eval.summarize("M", [run(15, 18, 200), run(15, 18, 210), run(14, 18, 220)])
+        assert line == "M: runs 15/18 15/18 14/18 (min 14, mean 14.7, max 15), 630 s"
+
 
 def slow_second_turn(agent, request):
     """Fake play_turn: records where it runs; turn 2 never finishes in time."""
@@ -288,8 +367,8 @@ class TestTurnTimeout:
         monkeypatch.setattr(
             chat_eval,
             "run_model",
-            lambda m, sc, t, progress=None: real(
-                m, sc, t, turn_runner=slow_second_turn, progress=progress
+            lambda m, sc, t, progress=None, **kw: real(
+                m, sc, t, turn_runner=slow_second_turn, progress=progress, **kw
             ),
         )
         monkeypatch.setattr(

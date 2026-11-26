@@ -60,6 +60,15 @@ The same value is sent on every request, because a change makes Ollama
 reload the model and discard its cached prompt prefix.  Larger values use
 more memory (roughly 36 KB per token for a 3B Qwen2.5 model).  Invalid
 values are ignored with a warning.
+@item @env{CODEBUD_TEMPERATURE}
+@tab @emph{(unset)}
+@tab Sampling temperature (a number, for example @code{0}) sent to Ollama
+with every model request.  Unset sends nothing new; invalid values are
+ignored with a warning.  For repeatable runs (@pxref{Chat Session Evaluation}).
+@item @env{CODEBUD_SEED}
+@tab @emph{(unset)}
+@tab Sampling seed (an integer) sent to Ollama with every model request.
+Unset sends none; invalid values are ignored with a warning.
 @item @env{EMBED_MODEL}
 @tab @code{all-minilm}
 @tab Dedicated embedding model used by @command{codebud index} and the
@@ -197,6 +206,8 @@ from, highest first:
 @item @code{rag} @tab @env{CODEBUD_RAG} @tab @code{true} / @code{false}
 @item @code{rag_hints} @tab @env{CODEBUD_RAG_HINTS} @tab @code{true} / @code{false}
 @item @code{num_ctx} @tab @env{CODEBUD_NUM_CTX} @tab integer (user file only)
+@item @code{temperature} @tab @env{CODEBUD_TEMPERATURE} @tab number
+@item @code{seed} @tab @env{CODEBUD_SEED} @tab integer
 @item @code{openai_api_key} @tab @env{OPENAI_API_KEY} @tab string (user file only)
 @item @code{openai_model} @tab @env{OPENAI_MODEL} @tab string (user file only)
 @item @code{web_search} @tab @env{WEB_SEARCH_ENABLED} @tab @code{true} / @code{false} (user file only)

@@ -39,6 +39,9 @@ a safety policy you can read and change.
   step needs a shell, or made only of echo steps, goes back to the
   model once with the reason.
 
+  CODEBUD_TEMPERATURE and CODEBUD_SEED (or temperature and seed in
+  config.toml) make model runs repeatable; chat_eval.py uses them.
+
 ** Privacy
 
   Prompts go only to the Ollama on this machine by default; no cloud

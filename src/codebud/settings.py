@@ -65,6 +65,9 @@ SETTINGS = [
     Setting("rag_hints", "CODEBUD_RAG_HINTS", True, bool),
     # A project file could ask for a window that exhausts the machine's memory.
     Setting("num_ctx", "CODEBUD_NUM_CTX", 8192, int, user_only="sizes the model's memory use"),
+    # Repeatable runs (scripts/chat_eval.py); unset sends nothing.
+    Setting("temperature", "CODEBUD_TEMPERATURE", None, float),
+    Setting("seed", "CODEBUD_SEED", None, int),
     Setting("openai_api_key", "OPENAI_API_KEY", None, str, egress=True, secret=True),
     Setting(
         "openai_model",
@@ -155,7 +158,8 @@ def _read(path: Path | None, source: str) -> dict[str, str]:
             )
             continue
         # bool is a subclass of int: require the exact type.
-        if type(value) is not setting.kind:
+        # (TOML writes temperature = 0 as an integer; a float setting takes it.)
+        if type(value) is not setting.kind and not (setting.kind is float and type(value) is int):
             _warn(
                 "Ignoring '%s' in %s: expected %s, got %r",
                 key,
