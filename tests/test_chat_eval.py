@@ -122,3 +122,89 @@ class TestStepRecord:
         read = {"tool": "file_read", "args": {"path": "a.txt"}}
         assert chat_eval._step_record(cmd)["target"] == "ls"
         assert chat_eval._step_record(read)["target"] == "a.txt"
+
+
+def _kinds(checks):
+    for check in checks:
+        for kind, arg in check.items():
+            yield kind
+            if kind == "any_of":
+                for sub in arg:
+                    yield from _kinds([sub])
+
+
+class TestNewChecks:
+    def test_text_contains_model(self):
+        turn = {**_turn("I am Qwen2.5-Coder"), "model": "qwen2.5-coder:3b"}
+        assert _passed({"text_contains_model": True}, turn)
+        turn = {**_turn("I am the llama2 model"), "model": "llama2:7b"}
+        assert _passed({"text_contains_model": True}, turn)
+        turn = {**_turn("I am Codebud"), "model": "llama2:7b"}
+        assert not _passed({"text_contains_model": True}, turn)
+
+    def test_no_unread_claims(self):
+        rule = {"file": "abdul/trac.analysis", "keywords": ["gateway", "recommend"]}
+        check = {"no_unread_claims": rule}
+        assert _passed(check, _turn("two files about a VPN"))
+        assert not _passed(check, _turn("It says the Gateway is wrong"))
+        assert _passed(check, _turn("the gateway is wrong", steps=["cat abdul/trac.analysis"]))
+        assert not _passed(check, _turn("the gateway is wrong", steps=["cat abdul/trac.log"]))
+        reads = _turn("gateway")
+        reads["steps"] = [{"tool": "file_read", "target": "abdul/trac.analysis"}]
+        assert _passed(check, reads)
+
+    def test_no_unread_claims_list_of_rules(self):
+        rules = [
+            {"file": "a.txt", "keywords": ["alpha"]},
+            {"file": "b.txt", "keywords": ["beta"]},
+        ]
+        check = {"no_unread_claims": rules}
+        assert _passed(check, _turn("alpha", steps=["cat a.txt"]))
+        assert not _passed(check, _turn("alpha and beta", steps=["cat a.txt"]))
+
+    def test_no_steps(self):
+        assert _passed({"no_steps": True}, _turn("sorry"))
+        assert not _passed({"no_steps": True}, _turn("sorry", steps=["ls"], status="ok"))
+
+    def test_no_shell_refused(self):
+        check = {"no_shell_refused": True}
+        assert _passed(check, _turn("8 files"))
+        assert not _passed(check, _turn("steps run without a shell"))
+
+
+class TestLogsScenario:
+    path = SCRIPTS / "chat_eval_logs.json"
+
+    def test_loads_with_known_checks(self):
+        scenario = chat_eval.load_scenario(self.path)
+        assert len(scenario["turns"]) == 7
+        for turn in scenario["turns"]:
+            assert turn["request"] and turn["checks"]
+            for kind in _kinds(turn["checks"]):
+                assert kind in chat_eval.KNOWN_CHECKS
+
+    def test_generated_fixture(self, tmp_path):
+        chat_eval.make_fixture(tmp_path, chat_eval.load_scenario(self.path)["fixture"])
+        files = [p for p in tmp_path.rglob("*") if p.is_file()]
+        assert len(files) == 8
+        log = tmp_path / "abdul" / "trac.log"
+        assert 200_000 <= log.stat().st_size <= 400_000
+        lines = log.read_text().splitlines()
+        tail = "\n".join(lines[-6:])
+        assert "AuthError_t==3" in tail
+        assert "TrBaseFlow::FinishStep: Step failed" in tail
+        assert "certificate expired for vpn.example.org" in tail
+        assert "AuthError" not in "\n".join(lines[:-6])
+
+    def test_make_fixture_repeat(self, tmp_path):
+        spec = {"x/f.log": {"repeat": "ab\n", "times": 3, "then": "end\n"}}
+        chat_eval.make_fixture(tmp_path, spec)
+        assert (tmp_path / "x" / "f.log").read_text() == "ab\nab\nab\nend\n"
+
+
+class TestArguments:
+    def test_scenario_default_and_override(self):
+        parser = chat_eval.build_parser()
+        assert parser.parse_args(["m"]).scenario == chat_eval.SCENARIO
+        args = parser.parse_args(["--scenario", "x.json", "m"])
+        assert args.scenario == Path("x.json")

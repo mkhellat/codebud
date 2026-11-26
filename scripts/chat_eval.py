@@ -20,6 +20,7 @@ Usage (from the repository root, Ollama running):
     python scripts/chat_eval.py qwen2.5-coder:3b-instruct-q4_K_M
     python scripts/chat_eval.py MODEL_A MODEL_B
     python scripts/chat_eval.py --json MODEL      # one JSON line per turn
+    python scripts/chat_eval.py --scenario scripts/chat_eval_logs.json MODEL
 
 With a proxy in the environment, local Ollama needs
 NO_PROXY=127.0.0.1,localhost.  A run takes several minutes per model on a
@@ -53,6 +54,10 @@ KNOWN_CHECKS = {
     "file_exists_with",
     "not_refused",
     "any_of",
+    "text_contains_model",
+    "no_unread_claims",
+    "no_steps",
+    "no_shell_refused",
 }
 
 REFUSED = ("plan_refused", "plan_invalid", "plan_error", "llm_unavailable")
@@ -66,6 +71,16 @@ REFUSED = ("plan_refused", "plan_invalid", "plan_error", "llm_unavailable")
 def _step_texts(turn: dict) -> list[str]:
     """The target of each step: its path (file tools) or command."""
     return [str(s.get("target", "")) for s in turn.get("steps", [])]
+
+
+def _unread_claim_ok(rule: dict, text: str, steps: list[str]) -> bool:
+    """True when the text claims none of the file's contents, or a step of
+    this turn read (or named) the file."""
+    if not any(k.lower() in text for k in rule["keywords"]):
+        return True
+    name = rule["file"].lower()
+    base = name.rsplit("/", 1)[-1]
+    return any(name in s or base in s for s in steps)
 
 
 def _check_one(kind: str, arg, turn: dict, project_dir: Path) -> bool:
@@ -93,6 +108,16 @@ def _check_one(kind: str, arg, turn: dict, project_dir: Path) -> bool:
             return False
         content = path.read_text(errors="replace").lower()
         return all(w.lower() in content for w in arg.get("contains", []))
+    if kind == "text_contains_model":
+        family = str(turn.get("model", "")).split(":")[0].lower()
+        return bool(arg) == (bool(family and family in text) or "qwen" in text)
+    if kind == "no_unread_claims":
+        rules = [arg] if isinstance(arg, dict) else arg
+        return all(_unread_claim_ok(r, text, steps) for r in rules)
+    if kind == "no_steps":
+        return (not steps) == bool(arg)
+    if kind == "no_shell_refused":
+        return ("without a shell" not in text) == bool(arg)
     if kind == "any_of":
         return any(all(_check_one(k, a, turn, project_dir) for k, a in sub.items()) for sub in arg)
     raise ValueError(f"unknown check: {kind}")
@@ -112,8 +137,13 @@ def load_scenario(path: Path = SCENARIO) -> dict:
     return json.loads(path.read_text())
 
 
-def make_fixture(root: Path, files: dict[str, str]) -> None:
+def make_fixture(root: Path, files: dict) -> None:
+    """Write the fixture.  A value is the file's text, or a dict
+    {"repeat": LINE, "times": N, "then": TAIL} for a generated file: LINE
+    N times, then TAIL."""
     for name, content in files.items():
+        if isinstance(content, dict):
+            content = content["repeat"] * int(content["times"]) + content.get("then", "")
         target = root / name
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_text(content)
@@ -211,12 +241,22 @@ def run_model(model: str, scenario: dict) -> list[dict]:
     return records
 
 
-def main() -> int:
+def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     parser.add_argument("models", nargs="+", help="Ollama models to evaluate")
+    parser.add_argument(
+        "--scenario",
+        type=Path,
+        default=SCENARIO,
+        help="scenario file (default: scripts/chat_eval.json)",
+    )
     parser.add_argument("--json", action="store_true", help="print one JSON line per turn")
-    args = parser.parse_args()
-    scenario = load_scenario()
+    return parser
+
+
+def main() -> int:
+    args = build_parser().parse_args()
+    scenario = load_scenario(args.scenario)
 
     summary = []
     for model in args.models:
