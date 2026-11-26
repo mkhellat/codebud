@@ -251,8 +251,11 @@ def test_legacy_history_is_migrated_encrypted(encrypted, no_prompt):
     # Audit finding L4: the one-time entries.json migration wrote plaintext.
     legacy = paths.data_dir() / "memory" / "entries.json"
     legacy.parent.mkdir(parents=True, exist_ok=True)
-    legacy.write_text(json.dumps([{"timestamp": "t", "data": {"step": {"cmd": "old"}}}]))
+    # A plaintext with spaces: base64 ciphertext never contains a space, so
+    # it cannot match by chance (a bare "old" once did: "...q6oldYI").
+    secret = "ls the old migrated logs"
+    legacy.write_text(json.dumps([{"timestamp": "t", "data": {"step": {"cmd": secret}}}]))
     memory.MemoryStore()
     (line,) = _history_lines()
-    assert crypto.is_encrypted_line(line) and "old" not in line
+    assert crypto.is_encrypted_line(line) and secret not in line
     assert (legacy.parent / "entries.json.migrated").exists()  # the original is kept
