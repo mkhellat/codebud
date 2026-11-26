@@ -5,15 +5,17 @@ scripts/chat_eval.py: the scenario file is well formed, and each check kind
 passes and fails correctly on synthetic turn records.  No model, no network.
 """
 
-import importlib.util
+import os
+import sys
+import time
 from pathlib import Path
 
 import pytest
 
 SCRIPTS = Path(__file__).resolve().parent.parent / "scripts"
-_spec = importlib.util.spec_from_file_location("chat_eval", SCRIPTS / "chat_eval.py")
-chat_eval = importlib.util.module_from_spec(_spec)
-_spec.loader.exec_module(chat_eval)
+# On sys.path so that the spawned child process of run_model can import it.
+sys.path.insert(0, str(SCRIPTS))
+import chat_eval  # noqa: E402
 
 
 def _passed(check, turn, project=Path(".")):
@@ -208,3 +210,96 @@ class TestArguments:
         assert parser.parse_args(["m"]).scenario == chat_eval.SCENARIO
         args = parser.parse_args(["--scenario", "x.json", "m"])
         assert args.scenario == Path("x.json")
+
+    def test_turn_timeout_default_and_override(self):
+        parser = chat_eval.build_parser()
+        assert parser.parse_args(["m"]).turn_timeout == 300
+        assert parser.parse_args(["--turn-timeout", "2.5", "m"]).turn_timeout == 2.5
+
+
+def slow_second_turn(agent, request):
+    """Fake play_turn: records where it runs; turn 2 never finishes in time."""
+    Path(os.environ["EVAL_MARK"], "cwd").write_text(os.getcwd())
+    if request == "second":
+        Path(os.environ["EVAL_MARK"], "pid").write_text(str(os.getpid()))
+        time.sleep(60)
+    return {"plan": {"status": "chat_reply", "reply": "ok " + request}, "steps": []}
+
+
+def _alive(pid: int) -> bool:
+    try:
+        os.kill(pid, 0)
+    except OSError:
+        return False
+    return True
+
+
+class TestTurnTimeout:
+    scenario = {
+        "fixture": {"a.txt": "x"},
+        "turns": [
+            {"request": "first", "checks": [{"text_contains_any": ["ok first"]}]},
+            {"request": "second", "checks": [{"text_not_empty": True}, {"no_steps": True}]},
+            {"request": "third", "checks": [{"text_not_empty": True}]},
+            {"request": "fourth", "checks": [{"text_not_empty": True}]},
+        ],
+    }
+
+    def test_timeout_skips_rest_and_cleans_up(self, tmp_path, monkeypatch):
+        monkeypatch.setenv("EVAL_MARK", str(tmp_path))
+        seen = []
+        records = chat_eval.run_model(
+            "m:1b", self.scenario, 3, turn_runner=slow_second_turn, progress=seen.append
+        )
+        assert [r["status"] for r in records] == ["chat_reply", "timeout", "skipped", "skipped"]
+        assert [r["turn"] for r in records] == [1, 2, 3, 4]
+        assert all(c["passed"] for c in records[0]["checks"])
+        for rec in records[1:]:
+            assert rec["final_text"] == ""
+            assert rec["checks"] and not any(c["passed"] for c in rec["checks"])
+        assert len(records[1]["checks"]) == 2
+        assert records[1]["seconds"] == 3
+        assert seen == records
+        pid = int(Path(tmp_path, "pid").read_text())
+        deadline = time.monotonic() + 5
+        while _alive(pid) and time.monotonic() < deadline:
+            time.sleep(0.1)
+        assert not _alive(pid)
+        cwd = Path(Path(tmp_path, "cwd").read_text())
+        assert not cwd.exists()
+        assert not cwd.parent.exists()
+
+    def test_no_timeout_plays_everything(self, tmp_path, monkeypatch):
+        monkeypatch.setenv("EVAL_MARK", str(tmp_path))
+        scenario = {
+            **self.scenario,
+            "turns": self.scenario["turns"][:1] + self.scenario["turns"][2:],
+        }
+        records = chat_eval.run_model("m", scenario, 30, turn_runner=slow_second_turn)
+        assert [r["status"] for r in records] == ["chat_reply"] * 3
+
+    def test_main_reports_timeout_and_progress_on_stderr(self, tmp_path, monkeypatch, capsys):
+        import json
+
+        monkeypatch.setenv("EVAL_MARK", str(tmp_path))
+        path = tmp_path / "scenario.json"
+        path.write_text(json.dumps(self.scenario))
+        real = chat_eval.run_model
+        monkeypatch.setattr(
+            chat_eval,
+            "run_model",
+            lambda m, sc, t, progress=None: real(
+                m, sc, t, turn_runner=slow_second_turn, progress=progress
+            ),
+        )
+        monkeypatch.setattr(
+            sys, "argv", ["chat_eval", "--turn-timeout", "3", "--scenario", str(path), "m"]
+        )
+        assert chat_eval.main() == 0
+        out, err = capsys.readouterr()
+        assert "m: 1/5 checks passed" in out
+        assert "1 turn timed out" in out
+        assert "turn 1: chat_reply" in err
+        assert "turn 2: timeout" in err
+        assert "turn 3: skipped" in err
+        assert "turn 1" not in out

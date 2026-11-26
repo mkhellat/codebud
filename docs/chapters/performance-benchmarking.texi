@@ -842,6 +842,15 @@ Ollama must be running (with a proxy in the environment, set
 model on a CPU.  It prints each turn's status, checks passed and seconds,
 and a line @samp{MODEL: N/M checks passed, T s}.
 
+@option{--turn-timeout SECONDS} (default 300) bounds each turn: a turn
+that takes longer is abandoned and recorded as @code{timeout}, the model's
+later turns (which depend on it) as @code{skipped}, all their checks
+failed, and the run moves on to the next model; the summary line then ends
+with @samp{, 1 turn timed out}.  Each model plays in a child process that
+is terminated on a timeout.  Every finished turn is also reported on
+standard error, so a long run is seen to move; standard output is
+unchanged.
+
 @option{--scenario PATH} plays another scenario file; the default is
 @file{scripts/chat_eval.json}.  The second scenario,
 @file{scripts/chat_eval_logs.json}, is built from a real session and

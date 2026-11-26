@@ -33,13 +33,14 @@ import argparse
 import contextlib
 import io
 import json
+import multiprocessing
 import os
 import sys
 import tempfile
 import time
 from pathlib import Path
 
-sys.path.insert(0, "src")
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
 
 SCENARIO = Path(__file__).with_name("chat_eval.json")
 
@@ -59,6 +60,8 @@ KNOWN_CHECKS = {
     "no_steps",
     "no_shell_refused",
 }
+
+DEFAULT_TURN_TIMEOUT = 300
 
 REFUSED = ("plan_refused", "plan_invalid", "plan_error", "llm_unavailable")
 
@@ -197,47 +200,134 @@ def play_turn(agent, request: str) -> dict:
     return {"plan": plan, "steps": steps, "outcome": outcome, "request": request}
 
 
-def run_model(model: str, scenario: dict) -> list[dict]:
-    """Play every turn for one model; return one record per turn."""
+def _failed_record(model: str, number: int, turn: dict, status: str, seconds: int) -> dict:
+    """A record for a turn that did not run to the end: every check failed."""
+    names = [f"{k}={json.dumps(a)}" for check in turn["checks"] for k, a in check.items()]
+    return {
+        "model": model,
+        "turn": number,
+        "request": turn["request"],
+        "status": status,
+        "steps": [],
+        "final_text": "",
+        "seconds": seconds,
+        "checks": [{"name": n, "passed": False} for n in names],
+    }
+
+
+def _child_main(model: str, scenario: dict, tmp: str, turn_runner, conn) -> None:
+    """Child process: play every turn for one model inside the temporary
+    directory TMP, sending {"ready": True} and then one record per finished
+    turn through CONN.  TURN_RUNNER(agent, request) replaces play_turn (and
+    the agent is None) when given: a test hook."""
     os.environ["OLLAMA_MODEL"] = model
-    records = []
-    with tempfile.TemporaryDirectory(prefix="codebud-chat-eval-") as tmp:
-        project = Path(tmp) / "project"
-        project.mkdir()
-        # Keep the evaluation's sessions, memory and settings away from the
-        # user's real ones.
-        os.environ["XDG_DATA_HOME"] = str(Path(tmp) / "xdg-data")
-        os.environ["XDG_CONFIG_HOME"] = str(Path(tmp) / "xdg-config")
-        make_fixture(project, scenario["fixture"])
-        previous = os.getcwd()
-        os.chdir(project)
-        agent = None
-        try:
+    tmp_path = Path(tmp)
+    project = tmp_path / "project"
+    project.mkdir()
+    # Keep the evaluation's sessions, memory and settings away from the
+    # user's real ones.
+    os.environ["XDG_DATA_HOME"] = str(tmp_path / "xdg-data")
+    os.environ["XDG_CONFIG_HOME"] = str(tmp_path / "xdg-config")
+    make_fixture(project, scenario["fixture"])
+    os.chdir(project)
+    agent = None
+    try:
+        if turn_runner is None:
             from codebud.core import AgentCore
 
             agent = AgentCore()
             agent.set_mode("full-auto")
-            for number, turn in enumerate(scenario["turns"], 1):
-                started = time.monotonic()
-                result = play_turn(agent, turn["request"])
-                seconds = time.monotonic() - started
-                record = {
-                    "model": model,
-                    "turn": number,
-                    "request": turn["request"],
-                    "status": result["plan"].get("status"),
-                    "steps": result["steps"],
-                    "final_text": _final_text(agent, result),
-                    "seconds": round(seconds),
-                }
-                checks = evaluate(turn["checks"], record, project)
-                record["checks"] = [{"name": n, "passed": p} for n, p in checks]
-                record["final_text"] = record["final_text"][:500]  # checked in full above
-                records.append(record)
+            turn_runner = play_turn
+        conn.send({"ready": True})
+        for number, turn in enumerate(scenario["turns"], 1):
+            started = time.monotonic()
+            result = turn_runner(agent, turn["request"])
+            seconds = time.monotonic() - started
+            record = {
+                "model": model,
+                "turn": number,
+                "request": turn["request"],
+                "status": result["plan"].get("status"),
+                "steps": result["steps"],
+                "final_text": _final_text(agent, result),
+                "seconds": round(seconds),
+            }
+            checks = evaluate(turn["checks"], record, project)
+            record["checks"] = [{"name": n, "passed": p} for n, p in checks]
+            record["final_text"] = record["final_text"][:500]  # checked in full above
+            conn.send(record)
+    finally:
+        if agent is not None:
+            agent.close()
+        conn.close()
+
+
+def _stop(proc) -> None:
+    """Terminate the child; its pending Ollama request is simply abandoned."""
+    proc.terminate()
+    proc.join(5)
+    if proc.is_alive():
+        proc.kill()
+        proc.join()
+
+
+def run_model(
+    model: str,
+    scenario: dict,
+    turn_timeout: float = DEFAULT_TURN_TIMEOUT,
+    turn_runner=None,
+    progress=None,
+) -> list[dict]:
+    """Play every turn for one model in a child process; return one record
+    per turn.  A turn that takes longer than TURN_TIMEOUT seconds is
+    abandoned (child terminated) and recorded with status "timeout"; the
+    later turns depend on it, so they are recorded as "skipped".  PROGRESS,
+    if given, is called with each record as it arrives."""
+    turns = scenario["turns"]
+    records: list[dict] = []
+
+    def add(record: dict) -> None:
+        records.append(record)
+        if progress is not None:
+            progress(record)
+
+    ctx = multiprocessing.get_context("spawn")
+    with tempfile.TemporaryDirectory(prefix="codebud-chat-eval-") as tmp:
+        parent_conn, child_conn = ctx.Pipe(duplex=False)
+        proc = ctx.Process(
+            target=_child_main,
+            args=(model, scenario, tmp, turn_runner, child_conn),
+            daemon=True,
+        )
+        proc.start()
+        child_conn.close()
+        failure = None  # status of the turn that did not finish
+        try:
+            # Starting up (imports, agent) is not a turn; allow it at least a minute.
+            if not parent_conn.poll(max(turn_timeout, 60)):
+                failure = "timeout"
+            else:
+                try:
+                    parent_conn.recv()
+                except EOFError:
+                    failure = "error"
+            while failure is None and len(records) < len(turns):
+                if not parent_conn.poll(turn_timeout):
+                    failure = "timeout"
+                    break
+                try:
+                    add(parent_conn.recv())
+                except EOFError:  # the child died
+                    failure = "error"
         finally:
-            if agent is not None:
-                agent.close()
-            os.chdir(previous)
+            _stop(proc)
+            parent_conn.close()
+    if failure is not None:
+        number = len(records) + 1
+        seconds = round(turn_timeout) if failure == "timeout" else 0
+        add(_failed_record(model, number, turns[number - 1], failure, seconds))
+        for number in range(len(records) + 1, len(turns) + 1):
+            add(_failed_record(model, number, turns[number - 1], "skipped", 0))
     return records
 
 
@@ -251,7 +341,24 @@ def build_parser() -> argparse.ArgumentParser:
         help="scenario file (default: scripts/chat_eval.json)",
     )
     parser.add_argument("--json", action="store_true", help="print one JSON line per turn")
+    parser.add_argument(
+        "--turn-timeout",
+        type=float,
+        default=DEFAULT_TURN_TIMEOUT,
+        metavar="SECONDS",
+        help="abandon a turn that takes longer, skip the model's later turns "
+        f"(default: {DEFAULT_TURN_TIMEOUT})",
+    )
     return parser
+
+
+def _progress(record: dict) -> None:
+    """Report a finished turn on stderr (stdout keeps the table / JSON)."""
+    print(
+        f"[{record['model']}] turn {record['turn']}: {record['status']}, {record['seconds']} s",
+        file=sys.stderr,
+        flush=True,
+    )
 
 
 def main() -> int:
@@ -260,7 +367,7 @@ def main() -> int:
 
     summary = []
     for model in args.models:
-        records = run_model(model, scenario)
+        records = run_model(model, scenario, args.turn_timeout, progress=_progress)
         for rec in records:
             if args.json:
                 print(json.dumps(rec), flush=True)
@@ -273,7 +380,11 @@ def main() -> int:
         total = sum(len(r["checks"]) for r in records)
         passed = sum(c["passed"] for r in records for c in r["checks"])
         seconds = sum(r["seconds"] for r in records)
-        summary.append(f"{model}: {passed}/{total} checks passed, {seconds} s")
+        timeouts = sum(r["status"] == "timeout" for r in records)
+        line = f"{model}: {passed}/{total} checks passed, {seconds} s"
+        if timeouts:
+            line += f", {timeouts} turn{'s' if timeouts != 1 else ''} timed out"
+        summary.append(line)
     if not args.json:
         print("\n" + "\n".join(summary))
     return 0
