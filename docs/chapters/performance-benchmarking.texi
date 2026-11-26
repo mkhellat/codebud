@@ -841,3 +841,26 @@ Ollama must be running (with a proxy in the environment, set
 @code{NO_PROXY=127.0.0.1,localhost}); a run takes several minutes per
 model on a CPU.  It prints each turn's status, checks passed and seconds,
 and a line @samp{MODEL: N/M checks passed, T s}.
+
+@option{--scenario PATH} plays another scenario file; the default is
+@file{scripts/chat_eval.json}.  The second scenario,
+@file{scripts/chat_eval_logs.json}, is built from a real session and
+measures the answers to questions about files:
+
+@example
+python scripts/chat_eval.py --scenario scripts/chat_eval_logs.json MODEL
+@end example
+
+@noindent
+Its fixture has eight files: a short e-mail-like analysis and a
+generated VPN client log of about 270 KB (the failure is in its last
+lines) in @file{abdul}, some notes and two placeholder images in
+@file{prof}, @file{log_calc.c}, and two files in @file{zz}.  Its seven
+turns ask which model it is (the model's own name, not @samp{Codebud}:
+@code{text_contains_model}); what is in the directory; what the files in
+@file{abdul} are about (no claim about a file's contents unless a step of
+that turn read it: @code{no_unread_claims}); why the connection failed,
+reading the log and not the analysis; which file it just looked at; a
+complaint (answered without running steps again: @code{no_steps}); and how
+many files there are, grouped by type, which must not be refused for
+needing a shell (@code{no_shell_refused}).
