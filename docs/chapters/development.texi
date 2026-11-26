@@ -171,6 +171,8 @@ tests/
 ├── test_safety_executor_patcher.py  safety policy, executor, patching
 ├── test_safety_policy.py        whole-word matching, refused arguments,
 │                                powerful commands
+├── test_sampling.py             CODEBUD_TEMPERATURE and CODEBUD_SEED reach every
+│                                model request; invalid values ignored
 ├── test_sessions.py             session files, IDs, locking
 ├── test_settings.py             config.toml: precedence, project-file
 │                                egress rule, bad entries, sources

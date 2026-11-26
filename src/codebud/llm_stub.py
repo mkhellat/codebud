@@ -103,6 +103,46 @@ def num_ctx() -> int:
     return value
 
 
+_warned_sampling: set[str] = set()
+
+
+def _sampling_value(env: str, convert):
+    """The setting ``env`` converted by ``convert``, or None when unset or
+    invalid (warned about once, then ignored)."""
+    raw = os.environ.get(env, "").strip()
+    if not raw:
+        return None
+    try:
+        return convert(raw)
+    except ValueError:
+        if env not in _warned_sampling:
+            _warned_sampling.add(env)
+            logger.warning("Ignoring invalid %s=%r", env, raw)
+        return None
+
+
+def _float(raw: str) -> float:
+    value = float(raw)
+    if value != value or value in (float("inf"), float("-inf")):
+        raise ValueError(raw)
+    return value
+
+
+def sampling_options() -> dict:
+    """Sampling options for every Ollama request, from CODEBUD_TEMPERATURE
+    (a float) and CODEBUD_SEED (an int). Only what is set and valid is
+    included, so with neither set nothing is sent. Both exist to make
+    runs repeatable (scripts/chat_eval.py)."""
+    options: dict = {}
+    temperature = _sampling_value("CODEBUD_TEMPERATURE", _float)
+    if temperature is not None:
+        options["temperature"] = temperature
+    seed = _sampling_value("CODEBUD_SEED", int)
+    if seed is not None:
+        options["seed"] = seed
+    return options
+
+
 _LOOPBACK_HOSTS = {"localhost", "127.0.0.1", "::1"}
 
 
@@ -222,7 +262,7 @@ def _call_openai(prompt: str) -> str:
         resp = OpenAI().chat.completions.create(
             model=openai_model(),
             messages=[{"role": "user", "content": prompt}],
-            temperature=0.0,
+            **{"temperature": 0.0, **sampling_options()},
         )
     except Exception as exc:  # network, auth, quota...
         raise LLMUnavailable(f"OpenAI call failed: {exc}") from exc
@@ -487,7 +527,7 @@ def prewarm_model() -> None:
                     "model": model,
                     "prompt": "hi",
                     "stream": False,
-                    "options": {"num_predict": 2, "num_ctx": num_ctx()},
+                    "options": {"num_predict": 2, "num_ctx": num_ctx(), **sampling_options()},
                 },
                 timeout=(10, 120),
             )
@@ -521,7 +561,7 @@ def warm_model_sync(
                 "model": model,
                 "prompt": "hi",
                 "stream": True,
-                "options": {"num_predict": 2, "num_ctx": num_ctx()},
+                "options": {"num_predict": 2, "num_ctx": num_ctx(), **sampling_options()},
             },
             stream=True,
             timeout=(10, timeout),
@@ -613,7 +653,7 @@ def _call_ollama(
                 "model": model,
                 "prompt": prompt,
                 "stream": True,
-                "options": {"temperature": 0, "num_ctx": num_ctx()},
+                "options": {"temperature": 0, "num_ctx": num_ctx(), **sampling_options()},
             },
             stream=True,
             timeout=(10, timeout),

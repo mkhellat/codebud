@@ -851,6 +851,20 @@ is terminated on a timeout.  Every finished turn is also reported on
 standard error, so a long run is seen to move; standard output is
 unchanged.
 
+The model samples its answers, so one run cannot tell two versions of
+the code apart: the same scenario scored 12/13 in one run and 9/13 in
+the next.  Each run therefore sends @option{--temperature} (default 0)
+and @option{--seed} (default 42) to Codebud, as @env{CODEBUD_TEMPERATURE}
+and @env{CODEBUD_SEED}, which pass them to the model with every request.
+@option{--repeat N} (default 1) plays each model's scenario @var{N}
+times, each in a fresh child process and a fresh project; the JSON
+records carry a @code{run} number, and the summary shows each run's score
+and the spread:
+
+@example
+MODEL: runs 15/18 15/18 14/18 (min 14, mean 14.7, max 15), 630 s
+@end example
+
 @option{--scenario PATH} plays another scenario file; the default is
 @file{scripts/chat_eval.json}.  The second scenario,
 @file{scripts/chat_eval_logs.json}, is built from a real session and
