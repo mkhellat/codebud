@@ -439,6 +439,14 @@ class ModelHeartbeat:
             self._ping()
 
     def _ping(self) -> None:
+        """Keep the model loaded without touching its prompt cache.
+
+        An empty prompt only loads the model (Ollama answers done_reason
+        "load"). A real prompt -- this used to send "hi" -- takes over the
+        cache slot, and Ollama then would not restore the planner's long
+        cached prompt: the next turn re-read it all (measured 68 s instead
+        of 32 s on a 3B model, CPU). Same num_ctx as real calls, so the
+        ping never reloads the model."""
         model = os.environ.get("OLLAMA_MODEL")
         if not model:
             return
@@ -448,9 +456,9 @@ class ModelHeartbeat:
                 proxies=ollama_proxies(ollama_base()),
                 json={
                     "model": model,
-                    "prompt": "hi",
+                    "prompt": "",
                     "stream": False,
-                    "options": {"num_predict": 2, "num_ctx": num_ctx()},
+                    "options": {"num_ctx": num_ctx()},
                 },
                 timeout=(5, 60),
             )

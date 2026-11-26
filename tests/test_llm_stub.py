@@ -215,3 +215,24 @@ def test_summarize_conversation_sends_turns_and_strips_reply(monkeypatch):
     assert llm_stub.summarize_conversation(turns) == "A short summary."
     assert "User: list the python files" in captured["prompt"]
     assert "Assistant: planned: command(list python files)" in captured["prompt"]
+
+
+def test_the_heartbeat_ping_only_loads_the_model(monkeypatch):
+    """An empty prompt keeps the model loaded (Ollama resets keep_alive and
+    answers done_reason "load") without taking over the prompt cache: a
+    real prompt such as "hi" made Ollama re-read the planner's whole prompt
+    on the next turn (68 s instead of 32 s measured on a 3B model)."""
+    sent = []
+
+    def fake_post(url, json=None, **kwargs):
+        sent.append((url, json))
+
+    monkeypatch.setenv("OLLAMA_MODEL", "qwen2.5-coder:3b-instruct-q4_K_M")
+    monkeypatch.setattr(llm_stub.requests, "post", fake_post)
+    llm_stub.ModelHeartbeat()._ping()
+    [(url, body)] = sent
+    assert url.endswith("/api/generate")
+    assert body["prompt"] == ""
+    assert "num_predict" not in body.get("options", {})
+    # The same context size as real calls, so the ping never reloads it.
+    assert body["options"]["num_ctx"] == llm_stub.num_ctx()

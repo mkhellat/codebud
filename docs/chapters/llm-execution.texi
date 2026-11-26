@@ -717,7 +717,7 @@ export OLLAMA_KEEP_ALIVE=30m
 
 @subsection How Codebud uses keep_alive
 
-Codebud's @code{ModelHeartbeat} class sends a small real request every
+Codebud's @code{ModelHeartbeat} class sends a load-only request every
 4 minutes (below the 5-minute default) to keep the model loaded for the
 entire session:
 
@@ -730,20 +730,26 @@ class ModelHeartbeat:
     def _ping(self) -> None:      # (simplified)
         requests.post(
             f"@{_OLLAMA_BASE@}/api/generate",
-            json=@{"model": model, "prompt": "hi", "stream": False,
-                  # tiny real request; same num_ctx as every other call,
-                  # so the ping never makes Ollama reload the model
-                  "options": @{"num_predict": 2, "num_ctx": num_ctx()@}@},
+            json=@{"model": model, "prompt": "", "stream": False,
+                  # empty prompt: load only; same num_ctx as every other
+                  # call, so the ping never makes Ollama reload the model
+                  "options": @{"num_ctx": num_ctx()@}@},
             timeout=(5, 60),
             proxies=ollama_proxies(_OLLAMA_BASE),
         )
 @end example
 
 @noindent
-A zero-token ping (@code{"num_predict": 0}) would not work here --- Ollama
-returns immediately without exercising the model, so it does @emph{not}
-count as model usage and does @emph{not} reset the keep_alive timer.  The
-ping must produce actual output tokens to keep the model alive.
+An empty prompt only loads the model: Ollama answers at once
+(@code{done_reason} @code{"load"}) and resets the keep_alive timer, but
+runs nothing and leaves the prompt cache alone.  That matters.  The ping
+used to send a real prompt, @code{"hi"}; it then occupied the model's
+cache slot, and Ollama would not restore the planner's long cached
+prompt over it, so the next request re-read the whole prompt.  Measured
+on a 3B model on a laptop CPU, the turn after such a ping took 68@tie{}s
+of prefill instead of 32@tie{}s.  (A real prompt with
+@code{"num_predict": 0} is different again: it does not reset the
+timer.)
 
 
 @node Phase 6 Unload
