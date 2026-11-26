@@ -111,6 +111,14 @@ _RULES: list[tuple[str, str, str]] = [
         "Rephrase the request so each step names only in-scope targets and meets the "
         "reason given. The scope is the engagement file's: no allow-list can widen it.",
     ),
+    # A shell-syntax refusal is also the policy's: no allow-list entry helps.
+    (
+        "without a shell",
+        "A plan step relied on a shell (a pipe, redirection, && or ;), but steps run without one.",
+        "Rephrase the request: one step per program and its own options -- or ask "
+        "codebud to answer from one step's output (e.g. list the files with find, "
+        "then count them in the answer).",
+    ),
     (
         "safety policy",
         "A plan step uses a command or argument the safety policy does not allow.",

@@ -220,6 +220,11 @@ argument that is always refused, such as @code{find -exec} or
 or cannot be parsed.  A step the agent mode forbids is reported the same
 way.  @command{run} and @command{plan} exit with status 1.
 
+A step that uses shell syntax (a pipe, a redirection, @code{&&}, @code{;})
+is refused too, because steps run without a shell; no allow-list entry
+helps.  Rephrase the request: one program per step, or let Codebud answer
+from one step's output.
+
 Often the model knows the policy and declines by itself (``This request
 cannot be fulfilled with the available tools''); then nothing was blocked,
 and Codebud answers in plain words instead (@pxref{No Plan or an Empty
